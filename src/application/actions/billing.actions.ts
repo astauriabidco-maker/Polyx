@@ -59,9 +59,32 @@ export async function getFranchiseBillingSummaryAction(
                 return sum + (folder.training?.priceHt || 0);
             }, 0);
 
+            // 4. Calculate Exam Fees
+            const examRegistrations = await (prisma as any).examRegistration.findMany({
+                where: {
+                    learner: {
+                        agencyId: { in: agencyIds }
+                    },
+                    createdAt: {
+                        gte: startDate,
+                        lte: endDate
+                    }
+                },
+                include: {
+                    session: {
+                        select: { priceHt: true }
+                    }
+                }
+            });
+
+            const examsCount = examRegistrations.length;
+            const examsAmount = examRegistrations.reduce((sum: number, reg: any) => {
+                return sum + (reg.session?.priceHt || 0);
+            }, 0);
+
             const royaltiesAmount = (turnoverHt * (f.royaltyRate || 0)) / 100;
             const leadsAmount = leadCount * (f.leadPrice || 0);
-            const totalToInvoice = royaltiesAmount + leadsAmount;
+            const totalToInvoice = royaltiesAmount + leadsAmount + examsAmount;
 
             return {
                 franchiseId: f.id,
@@ -70,6 +93,8 @@ export async function getFranchiseBillingSummaryAction(
                 leadCount,
                 leadPrice: f.leadPrice,
                 leadsAmount,
+                examsCount,
+                examsAmount,
                 turnoverHt,
                 royaltyRate: f.royaltyRate,
                 royaltiesAmount,

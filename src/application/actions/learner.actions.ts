@@ -62,6 +62,7 @@ export async function createLearnerFromLeadAction(leadId: string, fundingType: F
                 lastName: lead.lastName,
                 email: lead.email || "no-email",
                 phone: lead.phone,
+                agencyId: lead.agencyId,
                 leadId: lead.id
             }
         });

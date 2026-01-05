@@ -64,6 +64,7 @@ export async function createFranchiseAction(data: {
                 notes: data.notes
             }
         });
+        revalidatePath('/app/network');
         revalidatePath('/app/settings/management');
         return { success: true, franchise };
     } catch (error) {
@@ -96,6 +97,7 @@ export async function updateFranchiseAction(franchiseId: string, data: {
             where: { id: franchiseId },
             data
         });
+        revalidatePath('/app/network');
         revalidatePath('/app/settings/management');
         return { success: true, franchise };
     } catch (error) {
@@ -116,7 +118,7 @@ export async function deleteFranchiseAction(franchiseId: string) {
         await (prisma as any).franchise.delete({
             where: { id: franchiseId }
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/network');
         return { success: true };
     } catch (error) {
         console.error("Delete Franchise Error:", error);
@@ -132,7 +134,7 @@ export async function assignAgencyToFranchiseAction(agencyId: string, franchiseI
             where: { id: agencyId },
             data: { franchiseId: franchiseId }
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/network');
         return { success: true };
     } catch (error) {
         console.error("Assign Agency Error:", error);
@@ -162,7 +164,7 @@ export async function assignUserToFranchiseAction(userId: string, franchiseId: s
             create: { userId, franchiseId },
             update: {}
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/network');
         return { success: true };
     } catch (error) {
         console.error("Assign User to Franchise Error:", error);
@@ -175,7 +177,7 @@ export async function removeUserFromFranchiseAction(userId: string, franchiseId:
         await (prisma as any).userFranchise.delete({
             where: { userId_franchiseId: { userId, franchiseId } }
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/network');
         return { success: true };
     } catch (error) {
         console.error("Remove User from Franchise Error:", error);

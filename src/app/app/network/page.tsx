@@ -2,13 +2,14 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building, MapPin, DollarSign, LayoutDashboard, Settings2, Network } from 'lucide-react';
+import { Building, MapPin, DollarSign, LayoutDashboard, Settings2, Network, ClipboardCheck } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 // Import exploitation components
 import FranchisesSettingsPage from '../settings/franchises/page';
 import StructureSettingsPage from '../settings/structure/page';
 import BillingManagementPage from '../settings/billing/page';
+import ExamManagementPage from './exams/page';
 
 export default function NetworkExploitationPage() {
     const searchParams = useSearchParams();
@@ -53,6 +54,10 @@ export default function NetworkExploitationPage() {
                             <DollarSign size={16} />
                             <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Redevances & Facturation</span>
                         </TabsTrigger>
+                        <TabsTrigger value="exams" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <ClipboardCheck size={16} />
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Sessions d'Examen</span>
+                        </TabsTrigger>
                     </TabsList>
                 </Tabs>
             </div>
@@ -70,6 +75,10 @@ export default function NetworkExploitationPage() {
 
                     <TabsContent value="billing" className="mt-0 ring-offset-0 focus-visible:ring-0">
                         <BillingManagementPage />
+                    </TabsContent>
+
+                    <TabsContent value="exams" className="mt-0 ring-offset-0 focus-visible:ring-0">
+                        <ExamManagementPage />
                     </TabsContent>
                 </Tabs>
             </div>

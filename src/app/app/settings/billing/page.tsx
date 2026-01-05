@@ -49,11 +49,12 @@ export default function BillingManagementPage() {
     const totalTurnover = billingData.reduce((sum, item) => sum + item.turnoverHt, 0);
     const totalToInvoice = billingData.reduce((sum, item) => sum + item.totalToInvoice, 0);
     const totalLeads = billingData.reduce((sum, item) => sum + item.leadCount, 0);
+    const totalExams = billingData.reduce((sum, item) => sum + item.examsAmount, 0);
 
     const handleExportCSV = () => {
         if (billingData.length === 0) return;
 
-        const headers = ["Franchise", "SIRET", "Leads", "Montant Leads (€)", "Chiffre Affaires (€)", "Royalties (%)", "Montant Royalties (€)", "Total à Facturer (€)"];
+        const headers = ["Franchise", "SIRET", "Leads", "Montant Leads (€)", "Chiffre Affaires (€)", "Royalties (%)", "Montant Royalties (€)", "Examens", "Montant Examens (€)", "Total à Facturer (€)"];
         const rows = billingData.map(item => [
             item.franchiseName,
             item.siret || '',
@@ -62,6 +63,8 @@ export default function BillingManagementPage() {
             item.turnoverHt.toFixed(2),
             item.royaltyRate,
             item.royaltiesAmount.toFixed(2),
+            item.examsCount,
+            item.examsAmount.toFixed(2),
             item.totalToInvoice.toFixed(2)
         ]);
 
@@ -96,13 +99,13 @@ export default function BillingManagementPage() {
 
                 <div className="flex items-center gap-3">
                     <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-                        <Button variant="ghost" size="icon" onClick={prevMonth} className="h-9 w-9 hover:bg-white rounded-lg">
+                        <Button variant="ghost" size="sm" onClick={prevMonth} className="h-9 w-9 hover:bg-white rounded-lg p-0">
                             <ChevronLeft size={18} />
                         </Button>
                         <div className="px-4 font-bold text-sm text-slate-600 min-w-[120px] text-center">
                             Changer de mois
                         </div>
-                        <Button variant="ghost" size="icon" onClick={nextMonth} className="h-9 w-9 hover:bg-white rounded-lg">
+                        <Button variant="ghost" size="sm" onClick={nextMonth} className="h-9 w-9 hover:bg-white rounded-lg p-0">
                             <ChevronRight size={18} />
                         </Button>
                     </div>
@@ -138,11 +141,20 @@ export default function BillingManagementPage() {
                         </div>
                     </CardContent>
                 </Card>
+                <Card className="border shadow-none">
+                    <CardContent className="p-6">
+                        <p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Frais Examens (CCI)</p>
+                        <div className="flex items-end gap-2">
+                            <p className="text-3xl font-black text-slate-900">{totalExams.toLocaleString()}€</p>
+                            <Badge className="mb-1 bg-blue-50 text-blue-600 border-blue-100">Réseau</Badge>
+                        </div>
+                    </CardContent>
+                </Card>
                 <Card className="border-emerald-200 bg-emerald-50/20 shadow-none">
                     <CardContent className="p-6">
-                        <p className="text-sm font-bold text-emerald-700 mb-1 uppercase tracking-wider">Total Redevances</p>
+                        <p className="text-sm font-bold text-emerald-700 mb-1 uppercase tracking-wider">Total à Facturer</p>
                         <p className="text-3xl font-black text-emerald-600">{totalToInvoice.toLocaleString()}€</p>
-                        <p className="text-[10px] text-emerald-500/80 mt-1 font-bold">Montant HT à facturer</p>
+                        <p className="text-[10px] text-emerald-500/80 mt-1 font-bold">Montant HT Global</p>
                     </CardContent>
                 </Card>
                 <Card className="border shadow-none bg-slate-900 text-white">
@@ -178,9 +190,9 @@ export default function BillingManagementPage() {
                             <thead className="bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                                 <tr>
                                     <th className="px-6 py-4">Structure Philiale / Franchise</th>
-                                    <th className="px-6 py-4">Volume Leads</th>
-                                    <th className="px-6 py-4">Turnover (CA)</th>
-                                    <th className="px-6 py-4">Comms & Royalties</th>
+                                    <th className="px-6 py-4">Leads</th>
+                                    <th className="px-6 py-4">Examens</th>
+                                    <th className="px-6 py-4">CA & Royalties</th>
                                     <th className="px-6 py-4 text-right">Net à Facturer (HT)</th>
                                 </tr>
                             </thead>
@@ -205,17 +217,18 @@ export default function BillingManagementPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-slate-900 font-black">{item.turnoverHt.toLocaleString()}€</span>
-                                                <div className="h-1.5 w-12 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-indigo-400 w-2/3"></div>
-                                                </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-slate-900 font-bold">{item.examsCount} cand.</span>
+                                                <span className="text-[10px] text-slate-400">{item.examsAmount.toLocaleString()}€</span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
                                             <div className="flex flex-col">
-                                                <span className="text-emerald-600 font-black">{item.royaltyRate}%</span>
-                                                <span className="text-[10px] text-slate-400">Rémunération: {item.royaltiesAmount.toLocaleString()}€</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-slate-900 font-black">{item.turnoverHt.toLocaleString()}€</span>
+                                                    <span className="text-emerald-600 font-black text-xs">{item.royaltyRate}%</span>
+                                                </div>
+                                                <span className="text-[10px] text-slate-400">Roy.: {item.royaltiesAmount.toLocaleString()}€</span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-5 text-right">

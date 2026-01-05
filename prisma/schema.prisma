@@ -80,6 +80,7 @@ model Organisation {
   agencyMappings    AgencyMapping[]
   learners          Learner[]
   sessions          TrainingSession[]
+  examSessions      ExamSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,7 +257,8 @@ model Learner {
   agency   Agency? @relation(fields: [agencyId], references: [id])
 
   // Relations
-  folders LearnerFolder[]
+  folders           LearnerFolder[]
+  examRegistrations ExamRegistration[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -497,11 +499,54 @@ model Exam {
 
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   leads        Lead[]
+  sessions     ExamSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("exams")
+}
+
+model ExamSession {
+  id             String   @id @default(cuid())
+  examId         String
+  exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  date           DateTime
+  location       String
+  totalSpots     Int      @default(0)
+  priceHt        Float    @default(0) // Prix par candidat facturé à la franchise
+  status         String   @default("OPEN") // OPEN, CLOSED, COMPLETED, CANCELLED
+
+  registrations  ExamRegistration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("exam_sessions")
+}
+
+model ExamRegistration {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  learnerId String
+  learner   Learner     @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  status    String      @default("REGISTERED") // REGISTERED, PRESENT, ABSENT, PASSED, FAILED
+  score     String?
+  notes     String?
+
+  billingStatus String @default("PENDING") // PENDING, INVOICED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, learnerId])
+  @@map("exam_registrations")
 }
 
 model Agency {

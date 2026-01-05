@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid } from 'lucide-react';
+import {
+    LayoutGrid, ChartBar, Users, BookOpen, GraduationCap,
+    Fingerprint, Briefcase, Folder, ShieldCheck, Settings2,
+    Network, DollarSign, Zap, FileText, LogOut
+} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
 import { Button } from '@/components/ui/button';
@@ -22,25 +26,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }, []);
 
     const navigation = [
-        { name: 'Dashboard', href: '/app/dashboard', icon: 'ChartBarIcon', show: true },
-        { name: 'Prosp. & Commercial', href: '/app/leads', icon: 'UsersIcon', show: hasPermission('canManageLeads') },
-        { name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: 'BookOpenIcon', show: hasPermission('canManageCourses') }, // [NEW]
-        { name: 'Mes Apprenants', href: '/app/learners', icon: 'AcademicCapIcon', show: true },
-        { name: 'Émargement', href: '/app/attendance', icon: 'FingerPrintIcon', show: true }, // [NEW]
-        { name: 'CRM / Closing', href: '/app/crm', icon: 'BriefcaseIcon', show: hasPermission('canManageLeads') },
-        { name: 'Gestion Administrative', href: '/app/admin', icon: 'FolderIcon', show: hasPermission('canEditUsers') },
-        { name: 'Qualité / Audit', href: '/app/quality', icon: 'ShieldCheckIcon', show: hasPermission('canManageCourses') },
+        { name: 'Dashboard', href: '/app/dashboard', icon: ChartBar, show: true },
+        { name: 'Prosp. & Commercial', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
+        { name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: BookOpen, show: hasPermission('canManageCourses') },
+        { name: 'Mes Apprenants', href: '/app/learners', icon: GraduationCap, show: true },
+        { name: 'Émargement', href: '/app/attendance', icon: Fingerprint, show: true },
+        { name: 'CRM / Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
+        { name: 'Gestion Administrative', href: '/app/admin', icon: Folder, show: hasPermission('canEditUsers') },
+        { name: 'Qualité / Audit', href: '/app/quality', icon: ShieldCheck, show: hasPermission('canManageCourses') },
     ];
 
     const settingsNav = [
-        { name: 'Administration Système', href: '/app/settings/management', show: hasPermission('canEditUsers') },
-        { name: 'Pondération Scoring IA', href: '/app/settings/scoring', show: hasPermission('canEditUsers') }, // [NEW]
-        { name: 'Intégrations (API)', href: '/app/settings/integrations', show: hasPermission('canEditUsers') },
-        { name: 'Documents Légaux', href: '/app/settings/legal', show: hasPermission('canViewFinance') },
+        { name: 'Administration Système', href: '/app/settings/management', icon: Settings2, show: hasPermission('canEditUsers') },
+        { name: 'Pondération Scoring IA', href: '/app/settings/scoring', icon: Zap, show: hasPermission('canEditUsers') },
+        { name: 'Intégrations (API)', href: '/app/settings/integrations', icon: Settings2, show: hasPermission('canEditUsers') },
+        { name: 'Documents Légaux', href: '/app/settings/legal', icon: FileText, show: hasPermission('canViewFinance') },
     ];
 
     const exploitationNav = [
-        { name: 'Réseau & Franchises', href: '/app/network', show: hasPermission('canEditUsers') },
+        { name: 'Réseau & Franchises', href: '/app/network', icon: Network, show: hasPermission('canEditUsers') },
     ];
 
     // Prevent hydration mismatch by not rendering permission-dependent UI until mounted
@@ -89,11 +93,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 href={item.href}
                                 className={`
                   flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                  ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
                 `}
                             >
-                                {/* Icon Placeholder */}
-                                <span className={`h-4 w-4 rounded-full ${isActive ? 'bg-indigo-400' : 'bg-slate-300'}`} />
+                                <item.icon size={18} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
                                 {item.name}
                             </Link>
                         )
@@ -112,10 +115,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 href={item.href}
                                 className={`
                   flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                  ${isActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
                 `}
                             >
-                                <span className={`h-4 w-4 rounded-full ${isActive ? 'bg-purple-400' : 'bg-slate-300'}`} />
+                                <item.icon size={18} className={isActive ? 'text-purple-600' : 'text-slate-400'} />
                                 {item.name}
                             </Link>
                         )
@@ -134,10 +137,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 href={item.href}
                                 className={`
                   flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                  ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
                 `}
                             >
-                                <span className={`h-4 w-4 rounded-full border ${isActive ? 'border-indigo-400' : 'border-slate-300'}`} />
+                                <item.icon size={18} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
                                 {item.name}
                             </Link>
                         )
@@ -162,12 +165,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     >
                         <LayoutGrid size={14} /> Changer d'Espace
                     </Button>
-                    <Button variant="outline" size="sm" className="w-full" onClick={async () => {
+                    <Button variant="outline" size="sm" className="w-full gap-2" onClick={async () => {
                         await logoutAction();
                         logout();
                         window.location.href = '/login';
                     }}>
-                        Log out
+                        <LogOut size={14} /> Log out
                     </Button>
                 </div>
             </aside>
