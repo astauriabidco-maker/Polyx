@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, MapPin, ShieldCheck, Settings2, Globe, Building } from 'lucide-react';
+import { Building2, Users, MapPin, ShieldCheck, Settings2, Globe, Building, DollarSign } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 // Import existing page contents as components
@@ -11,6 +11,7 @@ import StructureSettingsPage from '../structure/page';
 import FranchisesSettingsPage from '../franchises/page';
 import UsersPage from '../users/page';
 import RolesPage from '../roles/page';
+import BillingManagementPage from '../billing/page';
 
 export default function NetworkManagementPage() {
     const searchParams = useSearchParams();
@@ -63,6 +64,10 @@ export default function NetworkManagementPage() {
                             <ShieldCheck size={16} />
                             <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Habilitations (Rôles)</span>
                         </TabsTrigger>
+                        <TabsTrigger value="billing" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm border-l border-slate-200 ml-2 pl-8">
+                            <DollarSign size={16} className="text-emerald-600" />
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap text-emerald-700">Facturation Réseau</span>
+                        </TabsTrigger>
                     </TabsList>
                 </Tabs>
             </div>
@@ -88,6 +93,10 @@ export default function NetworkManagementPage() {
 
                     <TabsContent value="roles" className="mt-0 ring-offset-0 focus-visible:ring-0">
                         <RolesPage />
+                    </TabsContent>
+
+                    <TabsContent value="billing" className="mt-0 ring-offset-0 focus-visible:ring-0">
+                        <BillingManagementPage />
                     </TabsContent>
                 </Tabs>
             </div>
