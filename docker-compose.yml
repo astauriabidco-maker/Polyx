@@ -1,0 +1,17 @@
+services:
+  polyx-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polyx-container
+    ports:
+      - "5555:5555"
+    environment:
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - NODE_ENV=production
+    volumes:
+      - ./prisma/dev.db:/app/prisma/dev.db
+    restart: always
+
+volumes:
+  db-data:
