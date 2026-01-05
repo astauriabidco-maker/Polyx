@@ -33,10 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ];
 
     const settingsNav = [
-        { name: 'Profil Organisation', href: '/app/settings/organization', show: hasPermission('canEditUsers') },
-        { name: 'Réseau & Agences', href: '/app/settings/structure', show: hasPermission('canEditUsers') },
-        { name: 'Users', href: '/app/settings/users', show: hasPermission('canEditUsers') },
-        { name: 'Matrice de Permissions', href: '/app/settings/roles', show: hasPermission('canEditUsers') },
+        { name: 'Administration Réseau', href: '/app/settings/management', show: hasPermission('canEditUsers') },
         { name: 'Pondération Scoring IA', href: '/app/settings/scoring', show: hasPermission('canEditUsers') }, // [NEW]
         { name: 'Intégrations (API)', href: '/app/settings/integrations', show: hasPermission('canEditUsers') },
         { name: 'Documents Légaux', href: '/app/settings/legal', show: hasPermission('canViewFinance') },
