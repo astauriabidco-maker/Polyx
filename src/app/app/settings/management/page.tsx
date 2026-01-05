@@ -7,11 +7,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 
 // Import existing page contents as components
 import OrganizationProfilePage from '../organization/page';
-import StructureSettingsPage from '../structure/page';
-import FranchisesSettingsPage from '../franchises/page';
 import UsersPage from '../users/page';
 import RolesPage from '../roles/page';
-import BillingManagementPage from '../billing/page';
 
 export default function NetworkManagementPage() {
     const searchParams = useSearchParams();
@@ -37,8 +34,8 @@ export default function NetworkManagementPage() {
                         <Settings2 size={22} />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Gestion du Réseau</h1>
-                        <p className="text-sm text-slate-500">Pilotez votre structure, vos agences et vos collaborateurs depuis un espace centralisé.</p>
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Administration Système</h1>
+                        <p className="text-sm text-slate-500">Configurez l'identité de l'OF, gérez les accès et la matrice des droits.</p>
                     </div>
                 </div>
 
@@ -48,25 +45,13 @@ export default function NetworkManagementPage() {
                             <Building2 size={16} />
                             <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Identité OF</span>
                         </TabsTrigger>
-                        <TabsTrigger value="franchises" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                            <Building size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Franchises</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="structure" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                            <MapPin size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Agences (Points de Vente)</span>
-                        </TabsTrigger>
                         <TabsTrigger value="team" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <Users size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Équipe & Utilisateurs</span>
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Utilisateurs</span>
                         </TabsTrigger>
                         <TabsTrigger value="roles" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <ShieldCheck size={16} />
                             <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Habilitations (Rôles)</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="billing" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm border-l border-slate-200 ml-2 pl-8">
-                            <DollarSign size={16} className="text-emerald-600" />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap text-emerald-700">Facturation Réseau</span>
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
@@ -79,24 +64,12 @@ export default function NetworkManagementPage() {
                         <OrganizationProfilePage />
                     </TabsContent>
 
-                    <TabsContent value="franchises" className="mt-0 ring-offset-0 focus-visible:ring-0">
-                        <FranchisesSettingsPage />
-                    </TabsContent>
-
-                    <TabsContent value="structure" className="mt-0 ring-offset-0 focus-visible:ring-0">
-                        <StructureSettingsPage />
-                    </TabsContent>
-
                     <TabsContent value="team" className="mt-0 ring-offset-0 focus-visible:ring-0">
                         <UsersPage />
                     </TabsContent>
 
                     <TabsContent value="roles" className="mt-0 ring-offset-0 focus-visible:ring-0">
                         <RolesPage />
-                    </TabsContent>
-
-                    <TabsContent value="billing" className="mt-0 ring-offset-0 focus-visible:ring-0">
-                        <BillingManagementPage />
                     </TabsContent>
                 </Tabs>
             </div>

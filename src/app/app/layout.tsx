@@ -33,10 +33,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ];
 
     const settingsNav = [
-        { name: 'Administration Réseau', href: '/app/settings/management', show: hasPermission('canEditUsers') },
+        { name: 'Administration Système', href: '/app/settings/management', show: hasPermission('canEditUsers') },
         { name: 'Pondération Scoring IA', href: '/app/settings/scoring', show: hasPermission('canEditUsers') }, // [NEW]
         { name: 'Intégrations (API)', href: '/app/settings/integrations', show: hasPermission('canEditUsers') },
         { name: 'Documents Légaux', href: '/app/settings/legal', show: hasPermission('canViewFinance') },
+    ];
+
+    const exploitationNav = [
+        { name: 'Réseau & Franchises', href: '/app/network', show: hasPermission('canEditUsers') },
     ];
 
     // Prevent hydration mismatch by not rendering permission-dependent UI until mounted
@@ -95,9 +99,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         )
                     })}
 
+                    {exploitationNav.some(i => i.show) && (
+                        <div className="pt-6 pb-2">
+                            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Exploitation</p>
+                        </div>
+                    )}
+                    {exploitationNav.filter(i => i.show).map((item) => {
+                        const isActive = pathname.startsWith(item.href);
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`
+                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
+                  ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                `}
+                            >
+                                <span className={`h-4 w-4 rounded-full ${isActive ? 'bg-purple-400' : 'bg-slate-300'}`} />
+                                {item.name}
+                            </Link>
+                        )
+                    })}
+
                     {settingsNav.some(i => i.show) && (
                         <div className="pt-6 pb-2">
-                            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Settings</p>
+                            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Administration</p>
                         </div>
                     )}
                     {settingsNav.filter(i => i.show).map((item) => {
