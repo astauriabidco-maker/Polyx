@@ -33,6 +33,14 @@ export async function createFranchiseAction(data: {
     street?: string;
     city?: string;
     zipCode?: string;
+    contractStatus?: string;
+    contractStartDate?: Date | null;
+    contractEndDate?: Date | null;
+    signatureDate?: Date | null;
+    dipSentDate?: Date | null;
+    royaltyRate?: number;
+    leadPrice?: number;
+    notes?: string;
 }) {
     try {
         const franchise = await (prisma as any).franchise.create({
@@ -45,10 +53,18 @@ export async function createFranchiseAction(data: {
                 phone: data.phone,
                 street: data.street,
                 city: data.city,
-                zipCode: data.zipCode
+                zipCode: data.zipCode,
+                contractStatus: data.contractStatus || "PENDING",
+                contractStartDate: data.contractStartDate,
+                contractEndDate: data.contractEndDate,
+                signatureDate: data.signatureDate,
+                dipSentDate: data.dipSentDate,
+                royaltyRate: data.royaltyRate || 0,
+                leadPrice: data.leadPrice || 0,
+                notes: data.notes
             }
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/settings/management');
         return { success: true, franchise };
     } catch (error) {
         console.error("Create Franchise Error:", error);
@@ -66,13 +82,21 @@ export async function updateFranchiseAction(franchiseId: string, data: {
     city?: string;
     zipCode?: string;
     isActive?: boolean;
+    contractStatus?: string;
+    contractStartDate?: Date | null;
+    contractEndDate?: Date | null;
+    signatureDate?: Date | null;
+    dipSentDate?: Date | null;
+    royaltyRate?: number;
+    leadPrice?: number;
+    notes?: string;
 }) {
     try {
         const franchise = await (prisma as any).franchise.update({
             where: { id: franchiseId },
             data
         });
-        revalidatePath('/app/settings');
+        revalidatePath('/app/settings/management');
         return { success: true, franchise };
     } catch (error) {
         console.error("Update Franchise Error:", error);

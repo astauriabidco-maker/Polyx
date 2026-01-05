@@ -562,6 +562,19 @@ model Franchise {
   
   isActive       Boolean      @default(true)
   
+  // Contract Management
+  contractStatus    String    @default("PENDING") // PENDING, ACTIVE, EXPIRED, TERMINATED
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  signatureDate     DateTime?
+  dipSentDate       DateTime?
+  
+  // Financial Terms
+  royaltyRate       Float?    @default(0) // Percentage of turnover
+  leadPrice         Float?    @default(0) // Flat price per lead
+  
+  notes             String?
+
   // Relations
   agencies       Agency[]     // Agences appartenant à cette franchise
   users          UserFranchise[]  // Utilisateurs de cette franchise

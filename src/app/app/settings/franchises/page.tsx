@@ -18,8 +18,11 @@ import { getAgenciesAction } from '@/application/actions/agency.actions';
 import { useToast } from '@/components/ui/use-toast';
 import {
     Building2, Plus, Users, MapPin, Trash2, Edit3, Link2, Unlink,
-    Phone, Mail, ChevronDown, ChevronUp, Store
+    Phone, Mail, ChevronDown, ChevronUp, Store, FileText, Calendar,
+    DollarSign, AlertCircle, CheckCircle2, Clock
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function FranchisesSettingsPage() {
     const { activeOrganization, activeMembership } = useAuthStore();
@@ -68,6 +71,14 @@ export default function FranchisesSettingsPage() {
             street: formData.get('street') as string,
             city: formData.get('city') as string,
             zipCode: formData.get('zipCode') as string,
+            contractStatus: formData.get('contractStatus') as string,
+            contractStartDate: formData.get('contractStartDate') ? new Date(formData.get('contractStartDate') as string) : null,
+            contractEndDate: formData.get('contractEndDate') ? new Date(formData.get('contractEndDate') as string) : null,
+            signatureDate: formData.get('signatureDate') ? new Date(formData.get('signatureDate') as string) : null,
+            dipSentDate: formData.get('dipSentDate') ? new Date(formData.get('dipSentDate') as string) : null,
+            royaltyRate: parseFloat(formData.get('royaltyRate') as string) || 0,
+            leadPrice: parseFloat(formData.get('leadPrice') as string) || 0,
+            notes: formData.get('notes') as string,
         };
 
         const res = await createFranchiseAction(data);
@@ -98,6 +109,14 @@ export default function FranchisesSettingsPage() {
             street: formData.get('street') as string,
             city: formData.get('city') as string,
             zipCode: formData.get('zipCode') as string,
+            contractStatus: formData.get('contractStatus') as string,
+            contractStartDate: formData.get('contractStartDate') ? new Date(formData.get('contractStartDate') as string) : null,
+            contractEndDate: formData.get('contractEndDate') ? new Date(formData.get('contractEndDate') as string) : null,
+            signatureDate: formData.get('signatureDate') ? new Date(formData.get('signatureDate') as string) : null,
+            dipSentDate: formData.get('dipSentDate') ? new Date(formData.get('dipSentDate') as string) : null,
+            royaltyRate: parseFloat(formData.get('royaltyRate') as string) || 0,
+            leadPrice: parseFloat(formData.get('leadPrice') as string) || 0,
+            notes: formData.get('notes') as string,
         };
 
         const res = await updateFranchiseAction(editingFranchise.id, data);
@@ -225,11 +244,19 @@ export default function FranchisesSettingsPage() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
+                                <Badge variant="outline" className={`
+                                    ${franchise.contractStatus === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                        franchise.contractStatus === 'EXPIRED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                            franchise.contractStatus === 'TERMINATED' ? 'bg-slate-200 text-slate-700 border-slate-300' :
+                                                'bg-amber-50 text-amber-700 border-amber-200'}
+                                `}>
+                                    {franchise.contractStatus === 'ACTIVE' && <CheckCircle2 size={12} className="mr-1" />}
+                                    {franchise.contractStatus === 'PENDING' && <Clock size={12} className="mr-1" />}
+                                    {franchise.contractStatus === 'EXPIRED' && <AlertCircle size={12} className="mr-1" />}
+                                    {franchise.contractStatus || 'PENDING'}
+                                </Badge>
                                 <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
                                     <Store size={12} className="mr-1" /> {franchise.agencies?.length || 0} agences
-                                </Badge>
-                                <Badge variant="outline" className="bg-slate-50 text-slate-600">
-                                    <Users size={12} className="mr-1" /> {franchise.users?.length || 0} utilisateurs
                                 </Badge>
                                 {expandedFranchise === franchise.id ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
                             </div>
@@ -238,19 +265,61 @@ export default function FranchisesSettingsPage() {
                         {/* Expanded Content */}
                         {expandedFranchise === franchise.id && (
                             <div className="border-t border-slate-100 p-5 bg-slate-50/30 space-y-4">
+                                {/* Contract and Financial Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Contract Details */}
+                                    <div className="p-4 bg-white rounded-xl border border-slate-100 space-y-3">
+                                        <h4 className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+                                            <FileText size={16} className="text-indigo-500" /> Pilotage du Contrat
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-y-2 text-sm">
+                                            <span className="text-slate-500">Début de contrat:</span>
+                                            <span className="font-medium text-slate-700">{franchise.contractStartDate ? new Date(franchise.contractStartDate).toLocaleDateString() : 'Non définie'}</span>
+
+                                            <span className="text-slate-500">Fin de contrat:</span>
+                                            <span className="font-medium text-slate-700">{franchise.contractEndDate ? new Date(franchise.contractEndDate).toLocaleDateString() : 'Non définie'}</span>
+
+                                            <span className="text-slate-500">Date Signature:</span>
+                                            <span className="font-medium text-slate-700">{franchise.signatureDate ? new Date(franchise.signatureDate).toLocaleDateString() : 'Non signée'}</span>
+
+                                            <span className="text-slate-500">Envoi DIP:</span>
+                                            <span className="font-medium text-slate-700">{franchise.dipSentDate ? new Date(franchise.dipSentDate).toLocaleDateString() : 'Non envoyé'}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Financial Terms */}
+                                    <div className="p-4 bg-white rounded-xl border border-slate-100 space-y-3">
+                                        <h4 className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+                                            <DollarSign size={16} className="text-emerald-500" /> Conditions Financières
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-y-2 text-sm">
+                                            <span className="text-slate-500">Redevance (Royalties):</span>
+                                            <span className="font-bold text-emerald-600">{franchise.royaltyRate || 0}% du CA</span>
+
+                                            <span className="text-slate-500">Prix du Lead:</span>
+                                            <span className="font-bold text-emerald-600">{franchise.leadPrice || 0}€ HT</span>
+                                        </div>
+                                        {franchise.notes && (
+                                            <div className="mt-2 pt-2 border-t border-slate-50">
+                                                <p className="text-[11px] text-slate-400 italic leading-tight">{franchise.notes}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
                                 {/* Contact Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white rounded-xl border border-slate-100">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-indigo-50/30 rounded-xl border border-indigo-100/50">
                                     <div className="flex items-center gap-2 text-sm">
-                                        <Users size={16} className="text-slate-400" />
+                                        <Users size={16} className="text-indigo-400" />
                                         <span className="text-slate-500">Responsable:</span>
                                         <span className="font-medium text-slate-700">{franchise.managerName || 'Non défini'}</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-sm">
-                                        <Mail size={16} className="text-slate-400" />
+                                        <Mail size={16} className="text-indigo-400" />
                                         <span className="text-slate-700">{franchise.email || 'Pas d\'email'}</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-sm">
-                                        <Phone size={16} className="text-slate-400" />
+                                        <Phone size={16} className="text-indigo-400" />
                                         <span className="text-slate-700">{franchise.phone || 'Pas de téléphone'}</span>
                                     </div>
                                 </div>
@@ -376,6 +445,110 @@ export default function FranchisesSettingsPage() {
                                 defaultValue={editingFranchise?.city}
                             />
                         </div>
+                    </div>
+
+                    <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <FileText size={16} className="text-indigo-500" /> Pilotage du Contrat
+                        </label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Statut Contrat</label>
+                                <Select name="contractStatus" defaultValue={editingFranchise?.contractStatus || "PENDING"}>
+                                    <SelectTrigger className="h-9">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="PENDING">En attente (Prospect)</SelectItem>
+                                        <SelectItem value="ACTIVE">Actif (Signé)</SelectItem>
+                                        <SelectItem value="EXPIRED">Expiré</SelectItem>
+                                        <SelectItem value="TERMINATED">Résilier</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Date Signature</label>
+                                <Input
+                                    name="signatureDate"
+                                    type="date"
+                                    className="h-9"
+                                    defaultValue={editingFranchise?.signatureDate ? new Date(editingFranchise.signatureDate).toISOString().split('T')[0] : ''}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Date Début</label>
+                                <Input
+                                    name="contractStartDate"
+                                    type="date"
+                                    className="h-9"
+                                    defaultValue={editingFranchise?.contractStartDate ? new Date(editingFranchise.contractStartDate).toISOString().split('T')[0] : ''}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Date Fin</label>
+                                <Input
+                                    name="contractEndDate"
+                                    type="date"
+                                    className="h-9"
+                                    defaultValue={editingFranchise?.contractEndDate ? new Date(editingFranchise.contractEndDate).toISOString().split('T')[0] : ''}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Date d'envoi DIP</label>
+                            <Input
+                                name="dipSentDate"
+                                type="date"
+                                className="h-9"
+                                defaultValue={editingFranchise?.dipSentDate ? new Date(editingFranchise.dipSentDate).toISOString().split('T')[0] : ''}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <DollarSign size={16} className="text-emerald-500" /> Conditions Financières
+                        </label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Royalties (%)</label>
+                                <Input
+                                    name="royaltyRate"
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    placeholder="ex: 5.0"
+                                    className="h-9"
+                                    defaultValue={editingFranchise?.royaltyRate}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Prix du Lead (€)</label>
+                                <Input
+                                    name="leadPrice"
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    placeholder="ex: 80"
+                                    className="h-9"
+                                    defaultValue={editingFranchise?.leadPrice}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <AlertCircle size={16} className="text-slate-400" /> Notes Internes
+                        </label>
+                        <Textarea
+                            name="notes"
+                            placeholder="Observations, conditions particulières..."
+                            className="min-h-[80px]"
+                            defaultValue={editingFranchise?.notes}
+                        />
                     </div>
 
                     <div className="space-y-2 pt-4 border-t border-slate-100">
