@@ -38,10 +38,12 @@ export async function createAgencyAction(organisationId: string, formData: FormD
         const zipCode = formData.get('zipCode') as string;
         const phone = formData.get('phone') as string;
         const email = formData.get('email') as string;
+        const franchiseId = formData.get('franchiseId') as string;
 
         const agency = await (prisma as any).agency.create({
             data: {
                 organisationId,
+                franchiseId: franchiseId === "none" ? null : franchiseId,
                 name,
                 code,
                 managerName,
@@ -71,6 +73,7 @@ export async function updateAgencyAction(organisationId: string, agencyId: strin
         const zipCode = formData.get('zipCode') as string;
         const phone = formData.get('phone') as string;
         const email = formData.get('email') as string;
+        const franchiseId = formData.get('franchiseId') as string;
 
         const agency = await (prisma as any).agency.update({
             where: { id: agencyId },
@@ -82,7 +85,8 @@ export async function updateAgencyAction(organisationId: string, agencyId: strin
                 city,
                 zipCode,
                 phone,
-                email
+                email,
+                franchiseId: franchiseId === "none" ? null : franchiseId,
             }
         });
         revalidatePath('/app/settings/structure');

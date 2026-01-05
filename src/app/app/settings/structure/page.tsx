@@ -7,8 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { getAgenciesAction, createAgencyAction, deleteAgencyAction, updateAgencyAction } from '@/application/actions/agency.actions';
+import { getFranchisesAction } from '@/application/actions/franchise.actions';
 import { MapPin, Plus, Building, User, Mail, Phone, Trash2, Edit3, Globe, Building2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 
 export default function StructureSettingsPage() {
@@ -17,10 +19,12 @@ export default function StructureSettingsPage() {
     const [isAgencyModalOpen, setIsAgencyModalOpen] = useState(false);
     const [editingAgency, setEditingAgency] = useState<any | null>(null);
     const [agencies, setAgencies] = useState<any[]>([]);
+    const [franchises, setFranchises] = useState<any[]>([]);
 
     useEffect(() => {
         if (activeOrganization?.id) {
             loadAgencies();
+            loadFranchises();
         }
     }, [activeOrganization?.id]);
 
@@ -28,6 +32,13 @@ export default function StructureSettingsPage() {
         const res = await getAgenciesAction(activeOrganization!.id);
         if (res.success && res.agencies) {
             setAgencies(res.agencies);
+        }
+    }
+
+    async function loadFranchises() {
+        const res = await getFranchisesAction(activeOrganization!.id);
+        if (res.success && res.franchises) {
+            setFranchises(res.franchises);
         }
     }
 
@@ -224,6 +235,24 @@ export default function StructureSettingsPage() {
                         placeholder="ex: LYO-01"
                         defaultValue={editingAgency?.code}
                     />
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-700">Rattachement (Optionnel)</label>
+                        <Select name="franchiseId" defaultValue={editingAgency?.franchiseId || "none"}>
+                            <SelectTrigger className="bg-white">
+                                <SelectValue placeholder="Choisir une franchise" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">Aucune (Agence Directe OF)</SelectItem>
+                                {franchises.map(f => (
+                                    <SelectItem key={f.id} value={f.id}>
+                                        {f.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-[10px] text-slate-400">Si non rattachée, l'agence est gérée directement par le siège de l'OF.</p>
+                    </div>
 
                     <div className="space-y-2 pt-2">
                         <label className="text-sm font-bold text-slate-700">Localisation</label>
