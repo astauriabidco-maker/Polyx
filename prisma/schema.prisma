@@ -1,0 +1,704 @@
+// Multi-Tenancy Schema - Polyx
+// Architecture: User <-> UserAccessGrant <-> Organisation
+// Dynamic Roles & Permissions System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE MODELS
+// ============================================
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  emailVerified  DateTime?
+  name           String?
+  firstName      String?
+  lastName       String?
+  image          String?
+  isGlobalAdmin  Boolean   @default(false)
+  hashedPassword String?
+  phone          String?
+  isActive       Boolean   @default(true)
+
+  // Relations
+  accessGrants   UserAccessGrant[]
+  agencies       UserAgency[]
+  franchises     UserFranchise[]
+  accounts       Account[]
+  sessions       Session[]
+  leadActivities LeadActivity[]
+  calls          Call[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Organisation {
+  id       String  @id @default(cuid())
+  name     String
+  siret    String? @unique
+  logo     String?
+  nda      String? // Numéro de Déclaration d'Activité
+  qualiopi Boolean @default(false)
+  isActive Boolean @default(true)
+
+  // Address
+  street  String?
+  zipCode String?
+  city    String?
+  country String? @default("France")
+
+  // Contact
+  phone   String?
+  email   String?
+  website String?
+
+  // Business Data
+  turnover Float?
+
+  // Relations
+  accessGrants UserAccessGrant[]
+  roles        Role[]
+  invitations  Invitation[]
+  leads        Lead[]
+  trainings    Training[]
+  exams        Exam[]
+  agencies     Agency[]
+  franchises   Franchise[]
+
+  integrationConfig IntegrationConfig?
+  agencyMappings    AgencyMapping[]
+  learners          Learner[]
+  sessions          TrainingSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organisations")
+}
+
+// ============================================
+// PERMISSIONS & ROLES SYSTEM
+// ============================================
+
+model SystemPermission {
+  id          String @id // ex: "FINANCE_VIEW", "USER_EDIT"
+  description String
+
+  // Relations
+  roles Role[] @relation("RoleToPermission")
+
+  @@map("system_permissions")
+}
+
+model Role {
+  id              String  @id @default(uuid())
+  name            String // ex: "Admin", "Manager", "Commercial"
+  organisationId  String
+  isSystemDefault Boolean @default(false)
+
+  // Relations
+  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  permissions  SystemPermission[] @relation("RoleToPermission")
+  accessGrants UserAccessGrant[]
+  invitations  Invitation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("roles")
+}
+
+// ============================================
+// PIVOT TABLE: MULTI-TENANCY MATRIX
+// ============================================
+
+model UserAccessGrant {
+  id String @id @default(cuid())
+
+  // Foreign Keys
+  userId         String
+  organisationId String
+  roleId         String
+
+  // Extra flags
+  isActive Boolean @default(true)
+
+  // Backward compatibility / convenience
+  permissionsOverride String?
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Unique constraint: one access record per user per org
+  @@unique([userId, organisationId])
+  @@map("user_access_grants")
+}
+
+// ============================================
+// WORKFLOW: INVITATIONS
+// ============================================
+
+model Invitation {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  status    String   @default("PENDING") // PENDING, ACCEPTED, EXPIRED
+
+  // Target assignment
+  organisationId String
+  roleId         String
+
+  // Relations
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("invitations")
+}
+
+// ============================================
+// AUTH (NextAuth compatible)
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================
+// BUSINESS ENTITIES
+// ============================================
+
+// ============================================
+// ACADEMY MODULE (Training Catalog)
+// ============================================
+
+// ============================================
+// LEARNERS MODULE (Post-Sales / Pedagogy)
+// ============================================
+
+model Learner {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  // Identity (SNAPSHOT from Lead/User)
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+
+  // Link to other modules
+  userId String? // If they have access to the platform (User.id)
+  leadId String? @unique // Origin lead (Lead.id)
+  lead   Lead?   @relation(fields: [leadId], references: [id])
+
+  // Address (from CPF API)
+  address    String?
+  postalCode String?
+  city       String?
+
+  // Agency Assignment
+  agencyId String?
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  // Relations
+  folders LearnerFolder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("learners")
+}
+
+model LearnerFolder {
+  id        String  @id @default(cuid())
+  learnerId String
+  learner   Learner @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  trainingId String?
+  training   Training? @relation(fields: [trainingId], references: [id])
+
+  // Funding & Compliance
+  fundingType      String @default("PERSO") // CPF, PERSO, OPCO, POLE_EMPLOI
+  status           String @default("ONBOARDING") // ONBOARDING, IN_TRAINING, COMPLETED, DROPPED
+  complianceStatus String @default("PENDING") // PENDING, VALID, ALERT, REJECTED
+
+  // External CPF/EDOF Data (Synced via API)
+  externalFileId String? // Numéro de dossier (ex: 4014...)
+  funderName     String? // ex: "CAISSE DE DÉPOT"
+  cpfStatus      String? // Statut CPF legacy (for badge display)
+
+  // CDC Progress Status (A_TRAITER, EN_ATTENTE, ACCEPTE, ENTREE_DECLAREE, SORTIE_DECLAREE, SERVICE_FAIT_DECLARE, SERVICE_FAIT_VALIDE, FACTURE)
+  cpfProgressStatus String? @default("A_TRAITER")
+
+  // Milestone Dates (via API sync)
+  receivedDate         DateTime? // A traiter - date de réception
+  acceptanceDate       DateTime? // Accepté - par le titulaire
+  entryDeclaredDate    DateTime? // Entrée déclarée
+  exitDeclaredDate     DateTime? // Sortie déclarée
+  serviceDeclaredDate  DateTime? // Service fait déclaré
+  serviceValidatedDate DateTime? // Service fait validé par CDC
+  invoicedDate         DateTime? // Facturé
+
+  // Financials
+  trainingAmount Float? // Montant Prise en Charge (€)
+
+  // Pedagogy Details (Snapshot from API)
+  trainingTitle      String? // Titre complet de la formation
+  trainingLocation   String? // Lieu ex: PANTIN
+  trainingPostalCode String? // CP lieu formation ex: 93500
+  trainingDuration   Int? // Durée totale (h)
+  hoursUsed          Int     @default(0) // Heures consommées
+  remainingHours     Int? // Durée restante (h)
+  weeklyIntensity    String? // ex: "10h"
+
+  // Formateur Assignment
+  formateurId    String? // Link to User (formateur)
+  formateurNda   String? // NDA du formateur
+  formateurCvUrl String? // CV du formateur
+
+  // Advanced Status Flags (New UI)
+  examDate      DateTime?
+  isBlocked     Boolean   @default(false)
+  blockReason   String?
+  isLowLevel    Boolean   @default(false)
+  isDropoutRisk Boolean   @default(false)
+
+  // Timeline
+  officialStartDate DateTime?
+  officialEndDate   DateTime?
+  actualStartDate   DateTime?
+  actualEndDate     DateTime?
+
+  // Relations
+  documents      LearnerDocument[]
+  attendanceLogs AttendanceLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("learner_folders")
+}
+
+model LearnerDocument {
+  id       String        @id @default(cuid())
+  folderId String
+  folder   LearnerFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  type  String // CONVENTION, EMARGEMENT, ATTESTATION_ENTREE, etc.
+  label String? // Human readable label
+
+  status String @default("MISSING") // MISSING, PENDING_REVIEW, VALID, REJECTED
+
+  fileUrl         String?
+  rejectionReason String?
+
+  isRequired Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("learner_documents")
+}
+
+model Training {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  title       String
+  code        String? // Reference interne (ex: DEV-001)
+  description String?
+
+  durationHours Int   @default(0)
+  priceHt       Float @default(0)
+
+  level      String  @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  category   String? // Dev, Langues, Vente...
+  programUrl String? // Lien vers PDF
+
+  isActive  Boolean           @default(true)
+  examId    String? // Optionnel : lien vers un examen spécifique
+  folders   LearnerFolder[]
+  sessions  TrainingSession[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([organisationId, code])
+  @@index([organisationId])
+  @@map("trainings")
+}
+
+model Lead {
+  id             String @id @default(cuid())
+  organisationId String
+
+  // Contact Info
+  firstName String
+  lastName  String
+  email     String?
+  phone     String
+
+  // Address
+  street  String?
+  zipCode String?
+  city    String?
+
+  // Source & Tracking
+  source     String?
+  externalId String?
+  providerId String?
+
+  // Assignment
+  assignedUserId String?
+
+  // Status & Scoring
+  status     String  @default("PROSPECT")
+  score      Int     @default(50)
+  salesStage String?
+  jobStatus  String?
+
+  // Dates
+  consentDate    DateTime?
+  responseDate   DateTime?
+  nextCallbackAt DateTime?
+  lastCallDate   DateTime?
+
+  callAttempts Int     @default(0)
+  notes        String?
+
+  // JSON Fields for CRM Extensibility
+  closingData Json? // Supported by Prisma SQLite
+  metadata    Json? // Supported by Prisma SQLite
+
+  // Relations
+  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  provider     ApiProvider?   @relation(fields: [providerId], references: [id])
+  examId       String?
+  exam         Exam?          @relation(fields: [examId], references: [id])
+  agencyId     String?
+  agency       Agency?        @relation(fields: [agencyId], references: [id])
+  activities   LeadActivity[]
+  calls        Call[]
+  learner      Learner? // This is the reverse relation from Learner.leadId
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organisationId])
+  @@index([status])
+  @@map("leads")
+}
+
+// ============================================
+// CRM: ACTIVITY & CALL TRACKING
+// ============================================
+
+model LeadActivity {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  type     String // NOTE, CALL, EMAIL, STATUS_CHANGE, MEETING, CREATED
+  content  String? // Description ou contenu
+  metadata String? // JSON pour données additionnelles
+
+  userId String // Qui a fait l'action
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@map("lead_activities")
+}
+
+model Call {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  duration Int? // Durée en secondes
+  outcome  String // ANSWERED, NO_ANSWER, BUSY, VOICEMAIL, WRONG_NUMBER
+  notes    String? // Notes de l'appel
+
+  callbackAt DateTime? // Si rappel planifié
+
+  callerId String // Commercial qui a appelé
+  caller   User   @relation(fields: [callerId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([callerId])
+  @@map("calls")
+}
+
+model Exam {
+  id             String  @id @default(cuid())
+  organisationId String
+  name           String
+  code           String
+  description    String?
+  isActive       Boolean @default(true)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  leads        Lead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("exams")
+}
+
+model Agency {
+  id             String  @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  // Franchise (nullable = agence directe OF)
+  franchiseId    String?
+  franchise      Franchise? @relation(fields: [franchiseId], references: [id])
+  
+  name           String
+  code           String?
+  managerName    String?
+  
+  street         String?
+  city           String
+  zipCode        String?
+  
+  phone          String?
+  email          String?
+  
+  isActive       Boolean @default(true)
+
+  leads          Lead[]
+  learners       Learner[]
+  sessions       TrainingSession[]
+  users          UserAgency[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("agencies")
+}
+
+// ============================================
+// FRANCHISE (Franchisés sans NDA propre)
+// ============================================
+
+model Franchise {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  // Identité juridique (pas de NDA, utilise celui de l'OF)
+  name           String       // Raison sociale
+  siret          String?      // SIRET propre
+  
+  // Contact
+  managerName    String?
+  email          String?
+  phone          String?
+  
+  // Adresse siège franchise
+  street         String?
+  city           String?
+  zipCode        String?
+  
+  isActive       Boolean      @default(true)
+  
+  // Relations
+  agencies       Agency[]     // Agences appartenant à cette franchise
+  users          UserFranchise[]  // Utilisateurs de cette franchise
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  @@map("franchises")
+}
+
+// Pivot: User <-> Franchise (un user peut appartenir à plusieurs franchises)
+model UserFranchise {
+  userId      String
+  franchiseId String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  franchise   Franchise @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  
+  @@id([userId, franchiseId])
+  @@map("user_franchises")
+}
+
+model UserAgency {
+  userId   String
+  agencyId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, agencyId])
+  @@map("user_agencies")
+}
+
+model ApiProvider {
+  id           String @id @default(cuid())
+  name         String
+  apiKey       String @unique @default(uuid())
+  providerType String @default("LEAD_GENERATOR") // LEAD_GENERATOR, CALL_CENTER, AFFILIATE
+
+  // Compliance & Legal
+  legalName        String?
+  siret            String?
+  complianceStatus String  @default("PENDING") // PENDING, VERIFIED, REJECTED
+
+  // Financial Intelligence
+  pricingModel String @default("CPL") // CPL (Cost Per Lead), FIXED (Monthly)
+  costPerLead  Float  @default(0)
+  currency     String @default("EUR")
+
+  isActive Boolean @default(true)
+
+  // Contact Info (JSON for flexibility)
+  contact String? // JSON String: { name, email, phone, role }
+
+  // Relations
+  leads Lead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("api_providers")
+}
+
+model IntegrationConfig {
+  id             String       @id @default(cuid())
+  organisationId String       @unique
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  // Financial Params
+  averageCartValue Float @default(1500)
+  roiThresholdHigh Float @default(5.0)
+  roiThresholdLow  Float @default(1.0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_configs")
+}
+
+model AgencyMapping {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  externalAgencyId String // ID sent by the API provider (e.g. "123", "AG-PARIS")
+  internalAgencyId String // UUID of the local Agency
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organisationId, externalAgencyId]) // external ID must be unique within an org
+  @@map("agency_mappings")
+}
+
+model TrainingSession {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  trainingId String?
+  training   Training? @relation(fields: [trainingId], references: [id])
+
+  formateurId   String? // Link to User (formateur)
+  formateurName String?
+
+  agencyId String?
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  date      DateTime
+  startTime String? // ex: "09:00"
+  endTime   String? // ex: "12:00"
+  title     String?
+  location  String?  @default("Distanciel")
+
+  status String @default("OPEN") // OPEN, CLOSED
+
+  attendanceLogs AttendanceLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("training_sessions")
+}
+
+model AttendanceLog {
+  id       String        @id @default(cuid())
+  folderId String
+  folder   LearnerFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  sessionId String?
+  session   TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  date      DateTime
+  duration  Int // Durée en minutes ou heures (à définir, restons sur Int pour l'instant)
+  signature String // Base64 string of the signature
+  status    String   @default("SIGNED") // SIGNED, ABSENT
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("attendance_logs")
+}
