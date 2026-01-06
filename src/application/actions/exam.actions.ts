@@ -42,23 +42,43 @@ export async function getExamSessionsAction(organisationId: string) {
 export async function createExamSessionAction(data: {
     organisationId: string;
     examId: string;
+    agencyId?: string;
     date: Date;
     location: string;
+    minSpots: number;
     totalSpots: number;
     priceHt: number;
 }) {
     try {
+        let agencyName = "RESEAU";
+        if (data.agencyId) {
+            const agency = await (prisma as any).agency.findUnique({
+                where: { id: data.agencyId },
+                select: { name: true }
+            });
+            if (agency) agencyName = agency.name.toUpperCase().replace(/\s+/g, '_');
+        }
+        const dateStr = new Date(data.date).toISOString().split('T')[0].replace(/-/g, '');
+        const sessionName = `SESSION_${agencyName}_${dateStr}`;
+
         const session = await (prisma as any).examSession.create({
             data: {
                 organisationId: data.organisationId,
                 examId: data.examId,
+                agencyId: data.agencyId,
+                name: sessionName,
                 date: data.date,
                 location: data.location,
+                minSpots: data.minSpots,
                 totalSpots: data.totalSpots,
                 priceHt: data.priceHt,
-                status: "OPEN"
+                status: "WAITING_FOR_REGISTRATION"
             }
         });
+
+        // Mock Notification
+        console.log(`[Notification] Mail & Popup sent to ${agencyName} for session ${sessionName}`);
+
         revalidatePath('/app/network');
         return { success: true, session };
     } catch (error) {
@@ -69,11 +89,51 @@ export async function createExamSessionAction(data: {
 
 // --- REGISTRATIONS ---
 
-export async function registerLearnerToSessionAction(sessionId: string, learnerId: string) {
+export async function getEligibleLearnersAction(organisationId: string, searchTerm?: string) {
+    try {
+        const learners = await (prisma as any).learner.findMany({
+            where: {
+                organisationId,
+                // On peut filtrer par agence si nécessaire, mais ici on prend tout l'org pour le siège
+                folders: {
+                    some: {
+                        status: { in: ['IN_TRAINING', 'COMPLETED', 'ONBOARDING'] }
+                    }
+                },
+                OR: searchTerm ? [
+                    { firstName: { contains: searchTerm } },
+                    { lastName: { contains: searchTerm } },
+                    { email: { contains: searchTerm } }
+                ] : undefined
+            },
+            include: {
+                agency: true,
+                folders: {
+                    select: { externalFileId: true },
+                    take: 1
+                }
+            },
+            take: 10
+        });
+        return { success: true, learners };
+    } catch (error) {
+        console.error("Get Eligible Learners Error:", error);
+        return { success: false, error: "Failed to fetch eligible learners" };
+    }
+}
+
+export async function registerLearnerToSessionAction(data: {
+    sessionId: string;
+    learnerId: string;
+    motivation?: string;
+    idNumber?: string;
+    nativeLanguage?: string;
+    documentUrl?: string;
+}) {
     try {
         // Check if session is open and has spots
         const session = await (prisma as any).examSession.findUnique({
-            where: { id: sessionId },
+            where: { id: data.sessionId },
             include: {
                 _count: {
                     select: { registrations: true }
@@ -82,16 +142,23 @@ export async function registerLearnerToSessionAction(sessionId: string, learnerI
         });
 
         if (!session) return { success: false, error: "Session not found" };
-        if (session.status !== "OPEN") return { success: false, error: "Session is not open for registration" };
+        const allowedStatuses = ["WAITING_FOR_REGISTRATION", "OPEN"];
+        if (!allowedStatuses.includes(session.status)) {
+            return { success: false, error: "La session n'est plus ouverte aux inscriptions" };
+        }
         if (session.totalSpots > 0 && session._count.registrations >= session.totalSpots) {
-            return { success: false, error: "Session is full" };
+            return { success: false, error: "La session est complète" };
         }
 
         const registration = await (prisma as any).examRegistration.create({
             data: {
-                sessionId,
-                learnerId,
-                status: "REGISTERED"
+                sessionId: data.sessionId,
+                learnerId: data.learnerId,
+                motivation: data.motivation,
+                idNumber: data.idNumber,
+                nativeLanguage: data.nativeLanguage,
+                documentUrl: data.documentUrl,
+                status: "WAITING_FOR_VALIDATION" // New default status
             }
         });
 
@@ -100,7 +167,7 @@ export async function registerLearnerToSessionAction(sessionId: string, learnerI
         return { success: true, registration };
     } catch (error: any) {
         if (error.code === 'P2002') {
-            return { success: false, error: "Learner is already registered for this session" };
+            return { success: false, error: "Cet apprenant est déjà inscrit à cette session" };
         }
         console.error("Registration Error:", error);
         return { success: false, error: "Failed to register learner" };
@@ -139,5 +206,63 @@ export async function updateRegistrationStatusAction(registrationId: string, sta
     } catch (error) {
         console.error("Update Registration Error:", error);
         return { success: false, error: "Failed to update registration" };
+    }
+}
+
+export async function updateSessionStatusAction(sessionId: string, status: string) {
+    try {
+        const session = await (prisma as any).examSession.findUnique({
+            where: { id: sessionId },
+            include: { _count: { select: { registrations: true } } }
+        });
+
+        if (!session) return { success: false, error: "Session not found" };
+
+        // Quorum check for agency validation
+        if (status === "VALIDATION_PENDING" && session._count.registrations < session.minSpots) {
+            return { success: false, error: `Le nombre minimum de candidats (${session.minSpots}) n'est pas atteint.` };
+        }
+
+        const updated = await (prisma as any).examSession.update({
+            where: { id: sessionId },
+            data: { status }
+        });
+
+        revalidatePath('/app/network');
+        return { success: true, session: updated };
+    } catch (error) {
+        console.error("Update Session Status Error:", error);
+        return { success: false, error: "Failed to update session status" };
+    }
+}
+
+export async function confirmSessionAction(sessionId: string) {
+    try {
+        const session = await (prisma as any).examSession.findUnique({
+            where: { id: sessionId },
+            include: { registrations: true }
+        });
+
+        if (!session) return { success: false, error: "Session not found" };
+
+        // Confirm session and all its registrations
+        await (prisma as any).examSession.update({
+            where: { id: sessionId },
+            data: { status: "CONFIRMED" }
+        });
+
+        await (prisma as any).examRegistration.updateMany({
+            where: { sessionId, status: "WAITING_FOR_VALIDATION" },
+            data: { status: "REGISTERED" }
+        });
+
+        // Trigger billing / invoice generation placeholder
+        console.log(`[Billing] Auto-invoice triggered for session ${session.name}`);
+
+        revalidatePath('/app/network');
+        return { success: true };
+    } catch (error) {
+        console.error("Confirm Session Error:", error);
+        return { success: false, error: "Failed to confirm session" };
     }
 }

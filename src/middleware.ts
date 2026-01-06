@@ -7,8 +7,8 @@ export function middleware(request: NextRequest) {
 
     const path = request.nextUrl.pathname;
 
-    // Public routes (Webhooks, Login, Landing)
-    if (path.startsWith('/api/webhooks') || path === '/login' || path === '/') {
+    // Public routes (Webhooks, Login, Landing, Emargement, Surveys, Complaints)
+    if (path.startsWith('/api/webhooks') || path === '/login' || path === '/' || path.startsWith('/sign') || path.startsWith('/survey') || path.startsWith('/report-issue')) {
         return NextResponse.next();
     }
 

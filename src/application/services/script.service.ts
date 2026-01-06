@@ -4,7 +4,7 @@ export class ScriptService {
     static getCallScript(lead: Lead): string {
         const firstName = lead.firstName || 'Candidat';
         const source = lead.source || 'votre demande';
-        const formation = lead.examId === 1 ? 'TOEIC' : (lead.examId === 3 ? 'TOEFL' : 'formation linguistique');
+        const formation = lead.examId === '1' ? 'TOEIC' : (lead.examId === '3' ? 'TOEFL' : 'formation linguistique');
 
         let script = `### 📞 Script de Call Contextuel\n\n`;
 

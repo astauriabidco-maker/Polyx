@@ -418,9 +418,9 @@ export default function IntegrationsPage() {
                                 <CardDescription>Préconisations stratégiques basées sur la data.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-3">
-                                {advancedStats.metrics.flatMap(m => m.insights.map((i, idx) => ({ ...i, provider: m.providerName, id: `${m.providerId}-${idx}` })))
+                                {advancedStats.metrics.flatMap((m: any) => m.insights.map((i: any, idx: number) => ({ ...i, provider: m.providerName, id: `${m.providerId}-${idx}` })))
                                     .slice(0, 3)
-                                    .map(insight => (
+                                    .map((insight: any) => (
                                         <div key={insight.id} className={`p-3 rounded border flex items-start gap-3 ${insight.type === 'SUCCESS' ? 'bg-green-950/30 border-green-500/30 text-green-200' :
                                             insight.type === 'DANGER' ? 'bg-red-950/30 border-red-500/30 text-red-200' :
                                                 'bg-amber-950/30 border-amber-500/30 text-amber-200'
@@ -434,7 +434,7 @@ export default function IntegrationsPage() {
                                             </div>
                                         </div>
                                     ))}
-                                {advancedStats.metrics.flatMap(m => m.insights).length === 0 && (
+                                {advancedStats.metrics.flatMap((m: any) => m.insights).length === 0 && (
                                     <p className="text-slate-500 italic">Aucun insight critique pour le moment.</p>
                                 )}
                             </CardContent>
@@ -460,7 +460,7 @@ export default function IntegrationsPage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
-                                        {advancedStats.metrics.map(m => (
+                                        {advancedStats.metrics.map((m: any) => (
                                             <tr key={m.providerId} className="hover:bg-slate-800/50 transition-colors">
                                                 <td className="px-4 py-3 font-medium text-slate-300">{m.providerName}</td>
                                                 <td className="px-4 py-3 text-right text-slate-400">{m.totalLeads}</td>

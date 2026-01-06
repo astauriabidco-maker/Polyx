@@ -19,9 +19,9 @@ export async function getSalesMetricsAction(userId: string, orgId: string) {
         where: { organisationId: orgId } // In real world: AND assignedToId: userId
     });
 
-    const callsToDo = myLeads.filter(l => l.status === LeadStatus.TO_CONTACT).length; // Mock logic
-    const opportunities = myLeads.filter(l => l.status === LeadStatus.QUALIFIED || l.status === LeadStatus.PROPOSAL_SENT).length;
-    const salesThisMonth = myLeads.filter(l => l.status === LeadStatus.CONVERTED).length; // Mock, needs date filter
+    const callsToDo = myLeads.filter(l => l.status === LeadStatus.PROSPECTION).length; // Mock logic
+    const opportunities = myLeads.filter(l => l.status === LeadStatus.QUALIFIED || l.status === LeadStatus.CONTACTED).length; // CONTACTED as proxy for Proposal
+    const salesThisMonth = myLeads.filter(l => l.status === LeadStatus.RDV_FIXE).length; // RDV_FIXE as proxy for Converted/Sale
 
     return {
         success: true,
@@ -31,7 +31,7 @@ export async function getSalesMetricsAction(userId: string, orgId: string) {
             salesThisMonth,
             conversionRate: 15 // Mock %
         },
-        pipeline: myLeads.filter(l => l.status === LeadStatus.PROPOSAL_SENT).slice(0, 5) // Recent 5 proposals
+        pipeline: myLeads.filter(l => l.status === LeadStatus.CONTACTED).slice(0, 5) // Recent 5 proposals
     };
 }
 
@@ -44,8 +44,8 @@ export async function getManagerMetricsAction(orgId: string) {
     });
 
     const totalLeads = orgLeads.length;
-    const converted = orgLeads.filter(l => l.status === LeadStatus.CONVERTED).length;
-    const leadsNew = orgLeads.filter(l => l.status === LeadStatus.NEW).length;
+    const converted = orgLeads.filter(l => l.status === LeadStatus.RDV_FIXE).length;
+    const leadsNew = orgLeads.filter(l => l.status === LeadStatus.PROSPECT).length;
 
     // Revenue mock
     const revenue = converted * 3500; // Mock avg basket

@@ -37,6 +37,10 @@ model User {
   leadActivities LeadActivity[]
   calls          Call[]
 
+  // B2B Portal
+  clientCompanyId String?
+  clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -81,6 +85,19 @@ model Organisation {
   learners          Learner[]
   sessions          TrainingSession[]
   examSessions      ExamSession[]
+
+  // Veille & Écosystème
+  watchArticles      WatchArticle[]
+  ecosystemPartners  EcosystemPartner[]
+
+  // Finances
+  invoices           Invoice[]
+
+  // B2B Clients
+  clientCompanies    ClientCompany[]
+
+  // Strategic Reports
+  strategicReports    StrategicReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -241,6 +258,11 @@ model Learner {
   lastName  String
   email     String
   phone     String?
+  
+  gender         String? // M, F
+  birthDate      DateTime?
+  nationality    String?
+  nativeLanguage String?
 
   // Link to other modules
   userId String? // If they have access to the platform (User.id)
@@ -257,6 +279,9 @@ model Learner {
   agency   Agency? @relation(fields: [agencyId], references: [id])
 
   // Relations
+  clientCompanyId String?
+  clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id])
+
   folders           LearnerFolder[]
   examRegistrations ExamRegistration[]
 
@@ -329,11 +354,58 @@ model LearnerFolder {
   // Relations
   documents      LearnerDocument[]
   attendanceLogs AttendanceLog[]
+  surveys        SatisfactionSurvey[]
+  complaints     Complaint[]
+  invoices       Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("learner_folders")
+}
+
+model SatisfactionSurvey {
+  id        String   @id @default(cuid())
+  folderId  String
+  folder    LearnerFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  type           String   @default("HOT") // HOT (à chaud), COLD (à froid)
+  rating         Int      // Overall rating 1-5
+  contentQuality Int?     // 1-5
+  pacingQuality  Int?     // 1-5
+  supportQuality Int?     // 1-5
+  comment        String?
+  
+  // AI Analysis (Gemini)
+  sentiment    String?   // POSITIVE, NEUTRAL, NEGATIVE
+  tags         String?   // Comma separated tags (Pédagogie, Admin, etc.)
+  summary      String?
+  
+  answeredAt     DateTime @default(now())
+
+  @@unique([folderId, type])
+  @@map("satisfaction_surveys")
+}
+
+model Complaint {
+  id        String   @id @default(cuid())
+  folderId  String
+  folder    LearnerFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  type      String   // PEDAGOGIQUE, TECHNIQUE, ADMINISTRATIF, AUTRE
+  subject   String
+  content   String
+  
+  status    String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  priority  String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  
+  resolution String? // Action corrective apportée
+  resolvedAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("complaints")
 }
 
 model LearnerDocument {
@@ -514,11 +586,16 @@ model ExamSession {
   organisationId String
   organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
+  agencyId       String?      // Si la session est réservée à une agence spécifique
+  agency         Agency?      @relation("AgencySessions", fields: [agencyId], references: [id])
+  
+  name           String?      // Format: SESSION_AGENCE_DATE
   date           DateTime
   location       String
-  totalSpots     Int      @default(0)
+  minSpots       Int      @default(1)
+  totalSpots     Int      @default(10)
   priceHt        Float    @default(0) // Prix par candidat facturé à la franchise
-  status         String   @default("OPEN") // OPEN, CLOSED, COMPLETED, CANCELLED
+  status         String   @default("WAITING_FOR_REGISTRATION") // WAITING_FOR_REGISTRATION, OPEN, VALIDATION_PENDING, CONFIRMED, COMPLETED, CANCELLED
 
   registrations  ExamRegistration[]
 
@@ -539,6 +616,12 @@ model ExamRegistration {
   status    String      @default("REGISTERED") // REGISTERED, PRESENT, ABSENT, PASSED, FAILED
   score     String?
   notes     String?
+
+  // Additional fields from user screenshots
+  motivation     String?
+  idNumber       String? // N° de CNI / Passeport
+  nativeLanguage String? // Optionnel si différent de l'apprenant
+  documentUrl    String? // Link to the proof file
 
   billingStatus String @default("PENDING") // PENDING, INVOICED
 
@@ -570,10 +653,12 @@ model Agency {
   email          String?
   
   isActive       Boolean @default(true)
+  isExamCenter   Boolean @default(false)
 
   leads          Lead[]
   learners       Learner[]
   sessions       TrainingSession[]
+  examSessions   ExamSession[] @relation("AgencySessions")
   users          UserAgency[]
 
   createdAt DateTime @default(now())
@@ -759,4 +844,428 @@ model AttendanceLog {
   updatedAt DateTime @updatedAt
 
   @@map("attendance_logs")
+}
+
+// ============================================
+// VEILLE & ÉCOSYSTÈME (Indicateurs 23-26)
+// ============================================
+
+model WatchArticle {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  // Content
+  title       String
+  url         String?
+  source      String?  // Ex: "Legifrance", "Centre Inffo", "LinkedIn"
+  category    String   // LEGAL, METIERS, PEDAGOGIE, HANDICAP
+  indicator   String?  // I23, I24, I25, I26
+  
+  // User Input
+  readAt      DateTime?
+  readBy      String?  // User ID who marked as read
+  notes       String?  // Personal notes
+
+  // AI Analysis (Gemini)
+  aiSummary       String?
+  aiImpact        String?  // What this means for the OF
+  aiRecommendations String? // Suggested actions
+
+  // Lifecycle
+  status      String   @default("UNREAD") // UNREAD, READ, ANALYZED, ACTIONED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  actions  ImpactAction[]
+
+  @@map("watch_articles")
+}
+
+model ImpactAction {
+  id        String   @id @default(cuid())
+  articleId String
+  article   WatchArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status      String   @default("TODO") // TODO, IN_PROGRESS, DONE
+  dueDate     DateTime?
+  completedAt DateTime?
+  assignedTo  String?  // User ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("impact_actions")
+}
+
+model EcosystemPartner {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  name        String
+  type        String   // AGEFIPH, CAP_EMPLOI, OPCO, CFA, EXPERT, OTHER
+  domain      String?  // Handicap, Emploi, Financement, etc.
+  
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  website      String?
+  
+  conventionUrl  String?  // Document de convention
+  conventionDate DateTime?
+  
+  notes       String?
+  isActive    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecosystem_partners")
+}
+
+// ============================================
+// AUDIT & CONTRÔLE (Intelligence Shield)
+// ============================================
+
+model AuditReport {
+  id             String       @id @default(cuid())
+  organisationId String
+  folderId       String?      // Optional: can be org-wide or folder-specific
+  
+  // Report Metadata
+  type        String   // FOLDER, BATCH, ORGANISATION
+  title       String
+  status      String   @default("PENDING") // PENDING, PASSED, FAILED, CRITICAL
+  
+  // Compliance Scores
+  overallScore     Int?     // 0-100
+  contractScore    Int?     // Triptyque: Contrat
+  attendanceScore  Int?     // Triptyque: Émargement
+  invoiceScore     Int?     // Triptyque: Facture
+
+  // AI Analysis
+  aiFindings       String?  // JSON: list of findings
+  aiRecommendations String?
+  riskLevel        String?  // LOW, MEDIUM, HIGH, CRITICAL
+
+  // Integrity
+  integrityHash    String?  // SHA-256 hash of the report
+  hashGeneratedAt  DateTime?
+  proofArchiveUrl  String?  // URL to ZIP of proof documents
+
+  generatedAt DateTime @default(now())
+  generatedBy String?  // User who triggered the audit
+
+  alerts ComplianceAlert[]
+
+  @@map("audit_reports")
+}
+
+model ComplianceAlert {
+  id        String   @id @default(cuid())
+  reportId  String?
+  report    AuditReport? @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  organisationId String
+  folderId       String?
+  
+  // Alert Details
+  type        String   // SIGNATURE_ANOMALY, HOUR_MISMATCH, MISSING_DOC, FRAUD_SUSPICION
+  severity    String   // INFO, WARNING, ERROR, CRITICAL
+  title       String
+  description String?
+  
+  // Evidence
+  evidenceData String?  // JSON: relevant data points
+  
+  // Resolution
+  status      String   @default("OPEN") // OPEN, INVESTIGATING, RESOLVED, DISMISSED
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?
+
+  createdAt DateTime @default(now())
+
+  @@map("compliance_alerts")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organisationId String
+  
+  // What changed
+  entityType  String   // LEARNER_FOLDER, DOCUMENT, ATTENDANCE, etc.
+  entityId    String
+  action      String   // CREATE, UPDATE, DELETE, VIEW
+  field       String?  // Which field was changed
+  oldValue    String?
+  newValue    String?
+  
+  // Who/When
+  userId      String?
+  userName    String?
+  ipAddress   String?
+  userAgent   String?
+  
+  timestamp   DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ============================================
+// BILAN PÉDAGOGIQUE ET FINANCIER (BPF)
+// ============================================
+
+model BPFReport {
+  id             String       @id @default(cuid())
+  organisationId String
+  year           Int          // Reporting year (e.g., 2025)
+  
+  status         String       @default("DRAFT") // DRAFT, VALIDATED, SUBMITTED
+  
+  // CADRE C (Financial)
+  totalRevenue     Float      @default(0)
+  cpfRevenue       Float      @default(0)
+  opcoRevenue      Float      @default(0)
+  poleEmploiRevenue Float     @default(0)
+  companyRevenue   Float      @default(0)
+  individualRevenue Float     @default(0)
+  publicRevenue    Float      @default(0) // State/Regions
+  otherRevenue     Float      @default(0)
+  
+  // CADRE E (Trainees)
+  totalTrainees    Int        @default(0)
+  cpfTrainees      Int        @default(0)
+  opcoTrainees     Int        @default(0)
+  otherTrainees    Int        @default(0)
+  
+  // CADRE F (Training Hours)
+  totalHours       Float      @default(0)
+  cpfHours         Float      @default(0)
+  opcoHours        Float      @default(0)
+  otherHours       Float      @default(0)
+
+  // CADRE G (Staff)
+  internalTrainers Int        @default(0)
+  externalTrainers Int        @default(0)
+  
+  // AI Analysis (Gemini)
+  aiSynthesis      String?    // Executive summary generated by AI
+  aiConsistency    String?    // JSON: Consistency check results
+  riskLevel        String?    // LOW, MEDIUM, HIGH
+  
+  // Meta
+  submissionDate   DateTime?
+  integrityHash    String?    // SHA-256 of the validated report
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  alerts    BPFAlert[]
+
+  @@unique([organisationId, year])
+  @@map("bpf_reports")
+}
+
+model BPFAlert {
+  id        String    @id @default(cuid())
+  reportId  String
+  report    BPFReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@map("bpf_alerts")
+}
+
+// ============================================
+// FINANCES & FACTURATION (Smart Ledger)
+// ============================================
+
+model Invoice {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id]) // The OF issuing the invoice
+  
+  // Client (Payer)
+  payerType      String       // LEARNER, COMPANY, OPCO, CPF, POLE_EMPLOI
+  payerName      String
+  payerAddress   String?
+  payerSiret     String?      // If company/OPCO
+  
+  // Relations
+  folderId       String?
+  folder         LearnerFolder? @relation(fields: [folderId], references: [id])
+  
+  // B2B Portal
+  clientCompanyId String?
+  clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id])
+  
+  // Invoice Core
+  number         String       // e.g., INV-2026-0001
+  date           DateTime     @default(now())
+  dueDate        DateTime
+  status         String       @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
+  type           String       @default("INVOICE") // INVOICE, CREDIT_NOTE (Avoir)
+
+  // Financials
+  subTotal       Float
+  taxAmount      Float        @default(0) // Often 0 for OF (exonération)
+  totalAmount    Float
+  balanceDue     Float        // Amount remaining to be paid
+  
+  // Meta
+  publicNote     String?      // Visible on PDF
+  privateNote    String?      // Internal use
+  pdfUrl         String?      // Link to generated PDF
+  sentAt         DateTime?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  lines          InvoiceLine[]
+  payments       Payment[]
+
+  @@unique([organisationId, number]) // Unique invoice number per OF
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  description String
+  quantity    Float
+  unitPrice   Float
+  taxRate     Float    @default(0)
+  total       Float
+
+  @@map("invoice_lines")
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  
+  amount      Float
+  date        DateTime @default(now())
+  method      String   // TRANSFER, CARD, CHECK, DIRECT_DEBIT, CPF_AUTO
+  reference   String?  // Transaction ID
+  
+  notes       String?
+  status      String   @default("COMPLETED") // PENDING, COMPLETED, FAILED
+
+  createdAt   DateTime @default(now())
+  
+  @@map("invoices_payments")
+}
+
+// ============================================
+// PORTAIL ENTREPRISE (B2B Client)
+// ============================================
+
+model ClientCompany {
+  id             String       @id @default(cuid())
+  organisationId String       // The OF this company is a client of
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  
+  name           String
+  siret          String?
+  address        String?
+  website        String?
+  logo           String?
+
+  // Primary Contact
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+
+  // Access
+  isActive       Boolean      @default(true)
+  portalCode     String?      // Simple code for quick invite
+
+  // Relations
+  users          User[]       // HR Managers / Admins for this company
+  learners       Learner[]    // Employees
+  invoices       Invoice[]    // Bills
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("client_companies")
+}
+
+// ============================================
+// REPORTING STRATÉGIQUE (Cockpit V3)
+// ============================================
+
+model StrategicReport {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  
+  period         String       // e.g., "2026-Q1", "2026-03"
+  type           String       @default("MONTHLY") // MONTHLY, QUARTERLY, ON_DEMAND
+
+  // 1. Predictive Finance
+  currentPipelineValue Float    @default(0) // Valeur pondérée des leads
+  projectedRevenue     Float    @default(0) // CA estimé à M+3
+  confidenceScore      Int      @default(0) // 0-100% fiabilité de la prédiction
+
+  // 2. Risk Audit (Snapshot)
+  riskScore            Int      @default(0) // 0-100 (100 = High Risk)
+  
+  // 3. AI Analysis
+  executiveSummary     String?  // Synthèse pour le CODIR
+  strategicRecommendations String? // Actions recommandées
+  marketBenchmark      String?  // Comparaison sectorielle (JSON)
+
+  createdAt      DateTime     @default(now())
+  
+  risks          RiskIndicator[]
+  evidence       EvidenceMetric[]
+
+  @@map("strategic_reports")
+}
+
+model RiskIndicator {
+  id             String          @id @default(cuid())
+  reportId       String
+  report         StrategicReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  type           String // REVENUE_GAP, ATTENDANCE_DROP, TEAM_CHURN, COMPLIANCE_ALERT
+  severity       String // LOW, MEDIUM, HIGH, CRITICAL
+  
+  label          String
+  currentValue   String // "85%"
+  targetValue    String // "95%"
+  trend          String // UP, DOWN, STABLE
+  
+  description    String?
+
+  @@map("risk_indicators")
+}
+
+model EvidenceMetric {
+  id             String          @id @default(cuid())
+  reportId       String
+  report         StrategicReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  category       String // SUCCESS_RATE, SATISFACTION, INSERTION, REVENUE_GROWTH
+  label          String
+  value          Float  // e.g., 92.5
+  unit           String // PERCENT, EUR, COUNT
+  
+  source         String? // "Pôle Emploi", "Interne", "Questionnaire"
+  validationDate DateTime?
+  
+  proofUrl       String? // Link to generated PDF proof
+
+  @@map("evidence_metrics")
 }

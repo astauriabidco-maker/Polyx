@@ -96,8 +96,8 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
         if (!lead || isRefreshingScore) return;
         setIsRefreshingScore(true);
         const result = await refreshLeadScoreAction(lead.id);
-        if (result.success && result.score !== undefined) {
-            onUpdate({ ...lead, score: result.score! });
+        if (result.success && result.newScore !== undefined) {
+            onUpdate({ ...lead, score: result.newScore! });
         }
         setIsRefreshingScore(false);
     };

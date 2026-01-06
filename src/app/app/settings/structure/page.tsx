@@ -134,11 +134,13 @@ export default function StructureSettingsPage() {
 
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-3 mb-1">
-                                <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100">
-                                    <Building size={20} />
-                                </div>
                                 <div>
-                                    <CardTitle className="text-lg font-bold text-slate-900">{agency.name}</CardTitle>
+                                    <div className="flex items-center gap-2">
+                                        <CardTitle className="text-lg font-bold text-slate-900">{agency.name}</CardTitle>
+                                        {agency.isExamCenter && (
+                                            <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 uppercase font-black px-1.5">Agréé</Badge>
+                                        )}
+                                    </div>
                                     {agency.franchise ? (
                                         <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200 mt-1">
                                             <Building2 size={10} className="mr-1" /> {agency.franchise.name}
@@ -297,6 +299,20 @@ export default function StructureSettingsPage() {
                             placeholder="Nom du responsable d'agence"
                             defaultValue={editingAgency?.managerName}
                         />
+                    </div>
+
+                    <div className="flex items-center gap-3 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                        <input
+                            type="checkbox"
+                            name="isExamCenter"
+                            id="isExamCenter"
+                            defaultChecked={editingAgency?.isExamCenter}
+                            className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                        />
+                        <label htmlFor="isExamCenter" className="text-sm font-bold text-blue-900 cursor-pointer">
+                            Centre d'Examen Agréé
+                            <span className="block text-[10px] text-blue-500 font-normal">Cette agence pourra être sélectionnée comme lieu d'examen.</span>
+                        </label>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">

@@ -8,9 +8,10 @@ interface ModalProps {
     onClose: () => void;
     title?: string;
     children: React.ReactNode;
+    size?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size }: ModalProps) {
     const [mounted, setMounted] = React.useState(false);
 
     React.useEffect(() => {
@@ -25,10 +26,12 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
 
     if (!mounted || !isOpen) return null;
 
+    const sizeClasses = size === '4xl' ? 'max-w-4xl' : (size === '2xl' ? 'max-w-2xl' : (size === 'xl' ? 'max-w-xl' : 'max-w-lg'));
+
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
             <div
-                className="relative w-full max-w-lg bg-white rounded-xl shadow-lg border border-slate-200 animate-in zoom-in-95"
+                className={`relative w-full ${sizeClasses} bg-white rounded-xl shadow-lg border border-slate-200 animate-in zoom-in-95`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-6 border-b border-slate-100">

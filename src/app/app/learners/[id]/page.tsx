@@ -22,6 +22,8 @@ import { AttendanceCertificate } from "@/components/attendance/AttendanceCertifi
 import { useAuthStore } from "@/application/store/auth-store";
 import { getAgenciesAction } from "@/application/actions/agency.actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getLearnerCompletionAction } from "@/application/actions/attendance.actions";
+import { CertificateModal } from "@/components/learners/CertificateModal";
 
 export default function LearnerDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -32,6 +34,9 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
     const [activeFolder, setActiveFolder] = useState<LearnerFolder | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [agencies, setAgencies] = useState<any[]>([]);
+    const [isCertificateModalOpen, setIsCertificateModalOpen] = useState(false);
+    const [certificateData, setCertificateData] = useState<any | null>(null);
+    const [isGeneratingCertificate, setIsGeneratingCertificate] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -82,15 +87,23 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
         const res = await updateLearnerFolderAction(activeFolder.id, updates);
 
         if (res.success && res.folder) {
-            // Convert Prisma Date to String/Date as needed if mismatch, but usually React State handles objects fine if consistent.
-            // The server returns serialized dates potentially.
-            // Best to just reload or trust the optimistic if we don't care about precise sync instantly.
-            // For now, optimistic is fine.
             console.log("Updated successfully");
         } else {
             console.error("Update failed");
-            // Revert or show error
         }
+    }
+
+    async function handleGenerateCertificate() {
+        if (!activeFolder) return;
+        setIsGeneratingCertificate(true);
+        const res = await getLearnerCompletionAction(activeFolder.id);
+        if (res.success) {
+            setCertificateData(res.data);
+            setIsCertificateModalOpen(true);
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+        setIsGeneratingCertificate(false);
     }
 
     async function handleBannerAction(action: string) {
@@ -454,20 +467,22 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                                     <Award size={120} />
                                 </div>
                                 <CardContent className="p-8">
-                                    <h3 className="text-xl font-bold mb-2">Clôture Administrative</h3>
+                                    <h3 className="text-xl font-bold mb-2">Clôture Administrative & Certificat</h3>
                                     <p className="text-indigo-200 text-sm mb-6 max-w-md">
-                                        Une fois la formation terminée et les émargements validés, vous pouvez générer l'attestation d'assiduité officielle pour le stagiaire.
+                                        Ce module génère le certificat de réalisation officiel obligatoire pour le dossier CPF,
+                                        basé sur l'assiduité réelle calculée via les émargements.
                                     </p>
-                                    <div className="max-w-sm">
-                                        <AttendanceCertificate
-                                            learner={learner}
-                                            folder={activeFolder as any}
-                                            organisation={{
-                                                name: activeOrganization?.name || "Polyx Academy",
-                                                nda: activeOrganization?.nda,
-                                                city: (activeOrganization as any)?.city || "Paris"
-                                            }}
-                                        />
+                                    <div className="flex gap-4">
+                                        <Button
+                                            onClick={handleGenerateCertificate}
+                                            disabled={isGeneratingCertificate}
+                                            className="bg-emerald-600 hover:bg-emerald-700 h-12 px-8 font-black gap-2 transition-all hover:scale-105"
+                                        >
+                                            {isGeneratingCertificate ? 'Audit des données...' : <>
+                                                <Award size={20} />
+                                                Générer le Certificat de Réalisation
+                                            </>}
+                                        </Button>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -490,6 +505,12 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                 )
                 }
             </div >
+
+            <CertificateModal
+                isOpen={isCertificateModalOpen}
+                onClose={() => setIsCertificateModalOpen(false)}
+                data={certificateData}
+            />
         </div >
     );
 }

@@ -44,7 +44,7 @@ export function CreateSessionModal({ isOpen, onClose, onCreated, activeAgencyId 
             getFormateursAction(activeOrganization!.id),
             getTrainingsAction(activeOrganization!.id)
         ]);
-        if (fRes.success) setFormateurs(fRes.users || []);
+        if (fRes.success) setFormateurs(fRes.formateurs || []);
         if (tRes.success) setTrainings(tRes.trainings || []);
     }
 
@@ -60,7 +60,7 @@ export function CreateSessionModal({ isOpen, onClose, onCreated, activeAgencyId 
             organisationId: activeOrganization.id,
             date: new Date(formData.date),
             formateurName: selectedFormateur ? `${selectedFormateur.firstName} ${selectedFormateur.lastName}` : undefined,
-            agencyId: activeAgencyId
+            agencyId: activeAgencyId || ""
         });
 
         if (res.success) {

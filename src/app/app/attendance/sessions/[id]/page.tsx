@@ -86,7 +86,11 @@ export default function SessionAttendancePage({ params }: SessionPageProps) {
         if (!selectedLearner) return;
 
         // Calculate duration based on session times if possible, or default to 2
-        const result = await markAttendanceAction(selectedLearner.folderId, signatureData, sessionId, 2);
+        const result = await markAttendanceAction({
+            folderId: selectedLearner.folderId,
+            signature: signatureData,
+            sessionId: sessionId
+        });
 
         if (result.success) {
             toast({

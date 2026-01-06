@@ -16,7 +16,7 @@ export async function getBranchMappingsAction(organisationId: string = 'demo-org
 }
 
 export async function upsertBranchMappingAction(organisationId: string = 'demo-org-id', externalId: string, internalId: string) {
-    return await ProviderConfigService.setBranchMapping(organisationId, externalId, internalId);
+    return await ProviderConfigService.setAgencyMapping(organisationId, externalId, internalId);
 }
 
 export async function deleteBranchMappingAction(organisationId: string = 'demo-org-id', externalId: string) {

@@ -76,12 +76,14 @@ export async function POST(request: Request) {
                         source: sanitized.source,
                         status: targetStatus,
                         salesStage: targetSalesStage,
-                        examId: sanitized.examen_id?.toString(),
-                        branchId: sanitized.branch_id?.toString(),
                         responseDate: responseDate,
                         consentDate: sanitized.date_consentement ? new Date(sanitized.date_consentement) : null,
                         score: isRecent ? 70 : 30, // Default temporary score
                         callAttempts: 0,
+                        metadata: {
+                            examId: sanitized.examen_id?.toString(),
+                            branchId: sanitized.branch_id?.toString(),
+                        }
                     }
                 });
 

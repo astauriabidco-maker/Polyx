@@ -52,7 +52,8 @@ export async function createAgencyAction(organisationId: string, formData: FormD
                 zipCode,
                 phone,
                 email,
-                isActive: true
+                isActive: true,
+                isExamCenter: formData.get('isExamCenter') === 'on'
             }
         });
         revalidatePath('/app/settings/structure');
@@ -87,6 +88,7 @@ export async function updateAgencyAction(organisationId: string, agencyId: strin
                 phone,
                 email,
                 franchiseId: franchiseId === "none" ? null : franchiseId,
+                isExamCenter: formData.get('isExamCenter') === 'on'
             }
         });
         revalidatePath('/app/settings/structure');

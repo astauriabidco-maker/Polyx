@@ -2,15 +2,89 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { checkAgencyAccess, getAgencyWhereClause } from "@/lib/auth-utils";
 
-// --- SESSION ACTIONS ---
+export async function getTrainingSessionsAction(organisationId: string, agencyId?: string) {
+    try {
+        const sessions = await (prisma as any).trainingSession.findMany({
+            where: {
+                organisationId,
+                agencyId: agencyId || undefined
+            },
+            include: {
+                training: { select: { name: true, code: true } },
+                _count: { select: { attendanceLogs: true } }
+            },
+            orderBy: { date: 'desc' }
+        });
+        return { success: true, sessions };
+    } catch (error) {
+        console.error("Get Training Sessions Error:", error);
+        return { success: false, error: "Failed to fetch sessions" };
+    }
+}
+
+export async function createTrainingSessionAction(data: {
+    organisationId: string;
+    trainingId: string;
+    agencyId: string;
+    date: Date;
+    startTime: string;
+    endTime: string;
+    title: string;
+    location: string;
+    formateurId?: string;
+    formateurName?: string;
+}) {
+    try {
+        const session = await (prisma as any).trainingSession.create({
+            data: {
+                organisationId: data.organisationId,
+                trainingId: data.trainingId,
+                agencyId: data.agencyId,
+                date: data.date,
+                startTime: data.startTime,
+                endTime: data.endTime,
+                title: data.title,
+                location: data.location,
+                formateurId: data.formateurId,
+                formateurName: data.formateurName,
+                status: "OPEN"
+            }
+        });
+        revalidatePath('/app/attendance');
+        return { success: true, session };
+    } catch (error) {
+        console.error("Create Training Session Error:", error);
+        return { success: false, error: "Failed to create session" };
+    }
+}
+
+export async function getFormateursAction(organisationId: string) {
+    try {
+        const formateurs = await (prisma as any).user.findMany({
+            where: {
+                memberships: {
+                    some: {
+                        organisationId
+                        // In real scenario, filter by role: 'FORMATEUR' or check permissions
+                    }
+                },
+                isActive: true
+            },
+            select: { id: true, firstName: true, lastName: true }
+        });
+        return { success: true, formateurs };
+    } catch (error) {
+        console.error("Get Formateurs Error:", error);
+        return { success: false, error: "Failed to fetch formateurs" };
+    }
+}
 
 export async function getTrainingsAction(organisationId: string) {
     try {
         const trainings = await (prisma as any).training.findMany({
             where: { organisationId, isActive: true },
-            orderBy: { title: 'asc' }
+            select: { id: true, title: true, code: true }
         });
         return { success: true, trainings };
     } catch (error) {
@@ -19,99 +93,23 @@ export async function getTrainingsAction(organisationId: string) {
     }
 }
 
-export async function getFormateursAction(organisationId: string) {
+export async function getSessionAttendanceAction(sessionId: string) {
     try {
-        const grants = await (prisma as any).userAccessGrant.findMany({
-            where: {
-                organisationId,
-                role: {
-                    name: { contains: 'Formateur' }
-                }
-            },
-            include: { user: true }
-        });
-
-        // If no specifically named formateurs found, fallback to all users in org
-        let formateurUsers = grants.map((g: any) => g.user);
-
-        if (formateurUsers.length === 0) {
-            const allGrants = await (prisma as any).userAccessGrant.findMany({
-                where: { organisationId },
-                include: { user: true }
-            });
-            formateurUsers = allGrants.map((g: any) => g.user);
-        }
-
-        return { success: true, users: formateurUsers };
-    } catch (error) {
-        console.error("Get Formateurs Error:", error);
-        return { success: false, error: "Failed to fetch formateurs" };
-    }
-}
-
-export async function createTrainingSessionAction(data: {
-    organisationId: string;
-    trainingId?: string;
-    formateurId?: string;
-    formateurName?: string;
-    date: Date;
-    startTime?: string;
-    endTime?: string;
-    title?: string;
-    location?: string;
-    agencyId?: string;
-}) {
-    try {
-        if (data.agencyId) {
-            const access = await checkAgencyAccess(data.organisationId, data.agencyId);
-            if (!access.isAllowed) return { success: false, error: "Vous n'êtes pas autorisé à créer une session pour cette agence." };
-        }
-
-        const session = await (prisma as any).trainingSession.create({
-            data: {
-                organisationId: data.organisationId,
-                trainingId: data.trainingId,
-                formateurId: data.formateurId,
-                formateurName: data.formateurName,
-                date: data.date,
-                startTime: data.startTime,
-                endTime: data.endTime,
-                title: data.title,
-                location: data.location,
-                agencyId: data.agencyId,
-            }
-        });
-        revalidatePath('/app/attendance');
-        return { success: true, session };
-    } catch (error) {
-        console.error("Create Session Error:", error);
-        return { success: false, error: "Failed to create session" };
-    }
-}
-
-export async function getTrainingSessionsAction(organisationId: string, agencyId?: string) {
-    try {
-        const whereClause = await getAgencyWhereClause(organisationId, agencyId);
-
-        const sessions = await (prisma as any).trainingSession.findMany({
-            where: whereClause,
+        const logs = await (prisma as any).attendanceLog.findMany({
+            where: { sessionId },
             include: {
-                training: true,
-                attendanceLogs: {
+                folder: {
                     include: {
-                        folder: {
-                            include: { learner: true }
-                        }
+                        learner: true
                     }
                 }
             },
-            orderBy: { date: 'desc' }
+            orderBy: { createdAt: 'desc' }
         });
-
-        return { success: true, sessions };
+        return { success: true, logs };
     } catch (error) {
-        console.error("Get Sessions Error:", error);
-        return { success: false, error: "Failed to fetch sessions" };
+        console.error("Get Session Attendance Error:", error);
+        return { success: false, error: "Failed to fetch attendance" };
     }
 }
 
@@ -120,71 +118,118 @@ export async function getSessionDetailsAction(sessionId: string) {
         const session = await (prisma as any).trainingSession.findUnique({
             where: { id: sessionId },
             include: {
-                organisation: true,
-                training: true,
-                attendanceLogs: {
-                    include: {
-                        folder: {
-                            include: { learner: true }
-                        }
-                    }
-                }
+                training: { select: { name: true, code: true } },
+                agency: { select: { name: true, city: true } },
+                _count: { select: { attendanceLogs: true } }
             }
         });
+
+        if (!session) return { success: false, error: "Session non trouvée" };
+
         return { success: true, session };
     } catch (error) {
         console.error("Get Session Details Error:", error);
-        return { success: false, error: "Failed to fetch session details" };
+        return { success: false, error: "Erreur lors du chargement de la session" };
     }
 }
 
-// --- ATTENDANCE ACTIONS ---
-
-export async function markAttendanceAction(folderId: string, signature: string, sessionId: string, duration: number) {
+export async function findLearnerForSigningAction(sessionId: string, searchTerm: string) {
     try {
-        // Find existing or create new
-        const log = await prisma.$transaction(async (tx: any) => {
-            const existing = await tx.attendanceLog.findFirst({
-                where: { sessionId, folderId }
-            });
-
-            let attendanceLog;
-            if (existing) {
-                attendanceLog = await tx.attendanceLog.update({
-                    where: { id: existing.id },
-                    data: { signature, duration, status: 'SIGNED' }
-                });
-            } else {
-                attendanceLog = await tx.attendanceLog.create({
-                    data: {
-                        sessionId,
-                        folderId,
-                        signature,
-                        duration,
-                        status: 'SIGNED',
-                        date: new Date()
-                    }
-                });
-            }
-
-            // Update hoursUsed in folder (simplified sum)
-            const allLogs = await tx.attendanceLog.findMany({
-                where: { folderId }
-            });
-            const totalHours = allLogs.reduce((sum: number, l: any) => sum + (l.duration || 0), 0);
-
-            await tx.learnerFolder.update({
-                where: { id: folderId },
-                data: { hoursUsed: totalHours }
-            });
-
-            return attendanceLog;
+        const session = await (prisma as any).trainingSession.findUnique({
+            where: { id: sessionId },
+            select: { organisationId: true }
         });
 
-        revalidatePath(`/app/attendance/sessions/${sessionId}`);
+        if (!session) return { success: false, error: "Session non trouvée" };
+
+        const learners = await (prisma as any).learner.findMany({
+            where: {
+                organisationId: session.organisationId,
+                OR: [
+                    { firstName: { contains: searchTerm } },
+                    { lastName: { contains: searchTerm } },
+                    { email: { contains: searchTerm } }
+                ]
+            },
+            include: {
+                folders: {
+                    select: { id: true, trainingTitle: true, externalFileId: true },
+                    take: 1
+                }
+            },
+            take: 5
+        });
+
+        return { success: true, learners };
+    } catch (error) {
+        console.error("Find Learner Error:", error);
+        return { success: false, error: "Erreur lors de la recherche" };
+    }
+}
+
+export async function registerAttendanceAction(data: {
+    sessionId: string;
+    folderId: string;
+    signature: string; // Base64
+}) {
+    try {
+        const log = await (prisma as any).attendanceLog.create({
+            data: {
+                sessionId: data.sessionId,
+                folderId: data.folderId,
+                signature: data.signature,
+                date: new Date(),
+                duration: 180, // Par défaut 3h ou à calculer
+                status: "SIGNED"
+            }
+        });
+        revalidatePath('/app/attendance');
         return { success: true, log };
     } catch (error) {
-        console.error("Mark Attendance Error:", error);
-        return { success: false, error: "Failed to mark attendance" };
+        console.error("Register Attendance Error:", error);
+        return { success: false, error: "Erreur lors de la signature" };
+    }
+}
+
+// Alias for markAttendanceAction used in UI
+export const markAttendanceAction = registerAttendanceAction;
+
+export async function getLearnerCompletionAction(folderId: string) {
+    try {
+        const folder = await (prisma as any).learnerFolder.findUnique({
+            where: { id: folderId },
+            include: {
+                learner: {
+                    include: {
+                        agency: true,
+                        organisation: true
+                    }
+                },
+                attendanceLogs: true
+            }
+        });
+
+        if (!folder) return { success: false, error: "Dossier non trouvé" };
+
+        const totalHours = folder.attendanceLogs.reduce((acc: number, log: any) => acc + (log.duration / 60), 0);
+
+        return {
+            success: true,
+            data: {
+                learnerName: `${folder.learner.firstName} ${folder.learner.lastName}`,
+                trainingTitle: folder.trainingTitle,
+                startDate: folder.actualStartDate || folder.createdAt,
+                endDate: folder.actualEndDate || new Date(),
+                totalHours: totalHours.toFixed(1),
+                organisationName: folder.learner.organisation.name,
+                organisationSiret: folder.learner.organisation.siret,
+                organisationNda: folder.learner.organisation.nda,
+                agencyName: folder.learner.agency?.name || "Siège",
+                isQualiopi: folder.learner.organisation.qualiopi
+            }
+        };
+    } catch (error) {
+        console.error("Get Completion Error:", error);
+        return { success: false, error: "Erreur lors du calcul de complétion" };
     }
 }

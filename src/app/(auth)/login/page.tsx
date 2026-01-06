@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { loginAction } from '@/application/actions/auth.actions';
 import { useAuthStore } from '@/application/store/auth-store';
+import { User } from '@/domain/entities/user';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -20,8 +21,21 @@ export default function LoginPage() {
         try {
             const result = await loginAction(formData);
             if (result.success && result.user && result.organization && result.membership && result.permissions) {
+                // Map to Domain User
+                const domainUser: User = {
+                    id: result.user.id,
+                    email: result.user.email,
+                    firstName: result.user.firstName || '',
+                    lastName: result.user.lastName || '',
+                    isActive: result.user.isActive,
+                    createdAt: new Date(result.user.createdAt),
+                    updatedAt: new Date(result.user.updatedAt),
+                    memberships: [result.membership],
+                    lastLogin: new Date()
+                };
+
                 // Sync with Client Store
-                login(result.user, result.organization, result.membership, result.permissions);
+                login(domainUser, result.organization, result.membership, result.permissions);
                 router.push('/app/dashboard');
             } else {
                 const msg = result.error || 'Erreur de connexion inconnue.';

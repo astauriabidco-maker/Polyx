@@ -61,7 +61,7 @@ export function LeadFilterBar({ availableOrgs, filters, onFilterChange }: LeadFi
                     className="pl-8 pr-4 py-1.5 bg-slate-950 border border-slate-700 rounded-md text-sm text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none appearance-none cursor-pointer min-w-[140px]"
                 >
                     <option value="ALL">Tous les Statuts</option>
-                    <option value={LeadStatus.NEW}>Nouveau</option>
+                    <option value={LeadStatus.PROSPECT}>Prospect</option>
                     <option value={LeadStatus.PROSPECTION}>En Prospection</option>
                     <option value={LeadStatus.CONTACTED}>Contacté</option>
                     <option value={LeadStatus.QUALIFIED}>Qualifié</option>

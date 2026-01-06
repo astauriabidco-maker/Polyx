@@ -5,6 +5,7 @@ import { User, LearnerFolder } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { ComplianceEngine } from "../services/compliance-engine";
 import { FundingType, DocumentType } from "@/domain/entities/learner";
+import { CommunicationService } from "../services/communication.service";
 
 // --- QUERY ACTIONS ---
 
@@ -171,10 +172,30 @@ export async function updateLearnerFolderAction(folderId: string, data: Partial<
 
         const updated = await prisma.learnerFolder.update({
             where: { id: folderId },
-            data: allowedUpdates
+            data: allowedUpdates,
+            include: {
+                learner: {
+                    include: {
+                        organisation: true
+                    }
+                }
+            }
         });
 
         console.log("Update Success:", updated);
+
+        // Automation: Send email if status marked as COMPLETED
+        if (input.status === 'COMPLETED') {
+            const domain = process.env.NEXT_PUBLIC_APP_URL || 'https://polyx-app.vercel.app';
+            CommunicationService.sendCertificateEmail({
+                to: updated.learner.email,
+                learnerName: `${updated.learner.firstName} ${updated.learner.lastName}`,
+                trainingTitle: updated.trainingTitle || "Formation Polyx",
+                organisationName: updated.learner.organisation.name,
+                certificateUrl: `${domain}/app/learners/${updated.learner.id}`,
+                surveyUrl: `${domain}/survey/${updated.id}`
+            }).catch(e => console.error("Auto Email Error:", e));
+        }
 
         // Revalidate the learner details page
         revalidatePath(`/app/learners/${updated.learnerId}`);

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutGrid, ChartBar, Users, BookOpen, GraduationCap,
     Fingerprint, Briefcase, Folder, ShieldCheck, Settings2,
-    Network, DollarSign, Zap, FileText, LogOut
+    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
@@ -25,26 +25,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setMounted(true);
     }, []);
 
-    const navigation = [
-        { name: 'Dashboard', href: '/app/dashboard', icon: ChartBar, show: true },
-        { name: 'Prosp. & Commercial', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
-        { name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: BookOpen, show: hasPermission('canManageCourses') },
-        { name: 'Mes Apprenants', href: '/app/learners', icon: GraduationCap, show: true },
-        { name: 'Émargement', href: '/app/attendance', icon: Fingerprint, show: true },
-        { name: 'CRM / Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
-        { name: 'Gestion Administrative', href: '/app/admin', icon: Folder, show: hasPermission('canEditUsers') },
-        { name: 'Qualité / Audit', href: '/app/quality', icon: ShieldCheck, show: hasPermission('canManageCourses') },
+    const commercialNav = [
+        { name: 'Tableau de Bord', href: '/app/dashboard', icon: ChartBar, show: true },
+        { name: 'Leads & Marketing', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
+        { name: 'CRM & Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
     ];
 
-    const settingsNav = [
-        { name: 'Administration Système', href: '/app/settings/management', icon: Settings2, show: hasPermission('canEditUsers') },
-        { name: 'Pondération Scoring IA', href: '/app/settings/scoring', icon: Zap, show: hasPermission('canEditUsers') },
-        { name: 'Intégrations (API)', href: '/app/settings/integrations', icon: Settings2, show: hasPermission('canEditUsers') },
-        { name: 'Documents Légaux', href: '/app/settings/legal', icon: FileText, show: hasPermission('canViewFinance') },
+    const trainingNav = [
+        { name: 'Mes Apprenants', href: '/app/learners', icon: GraduationCap, show: true },
+        { name: 'Suivi Émargement', href: '/app/attendance', icon: Fingerprint, show: true },
+        { name: 'Sessions d\'Examens', href: '/app/network?tab=exams', icon: ClipboardCheck, show: true },
+        { name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: BookOpen, show: hasPermission('canManageCourses') },
+        { name: 'Qualité / Audit', href: '/app/quality', icon: ShieldCheck, show: hasPermission('canManageCourses') },
+        { name: 'Veille & Écosystème', href: '/app/veille', icon: Radar, show: hasPermission('canManageCourses') },
     ];
 
     const exploitationNav = [
-        { name: 'Réseau & Franchises', href: '/app/network', icon: Network, show: hasPermission('canEditUsers') },
+        { name: 'Structure & Agences', href: '/app/network?tab=agencies', icon: MapPin, show: hasPermission('canEditUsers') },
+        { name: 'Gestion Franchises', href: '/app/network?tab=franchises', icon: Network, show: hasPermission('canEditUsers') },
+        { name: 'Redevances & Factures', href: '/app/network?tab=billing', icon: DollarSign, show: hasPermission('canEditUsers') },
+        { name: 'Administration', href: '/app/settings/management', icon: Settings2, show: hasPermission('canEditUsers') },
+        { name: 'Planificateur (CRON)', href: '/app/settings/scheduler', icon: Terminal, show: hasPermission('canEditUsers') },
+        { name: 'Audit & Contrôle', href: '/app/audit', icon: ShieldCheck, show: hasPermission('canEditUsers') },
+        { name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet, show: hasPermission('canEditUsers') },
+        { name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit, show: hasPermission('canEditUsers') },
     ];
 
     // Prevent hydration mismatch by not rendering permission-dependent UI until mounted
@@ -85,62 +89,66 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
 
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-                    {navigation.filter(i => i.show).map((item) => {
-                        const isActive = pathname.startsWith(item.href);
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`
-                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                `}
-                            >
-                                <item.icon size={18} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
-                                {item.name}
-                            </Link>
-                        )
-                    })}
-
-                    {exploitationNav.some(i => i.show) && (
-                        <div className="pt-6 pb-2">
-                            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Exploitation</p>
-                        </div>
-                    )}
-                    {exploitationNav.filter(i => i.show).map((item) => {
-                        const isActive = pathname.startsWith(item.href);
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`
-                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                `}
-                            >
-                                <item.icon size={18} className={isActive ? 'text-purple-600' : 'text-slate-400'} />
-                                {item.name}
-                            </Link>
-                        )
-                    })}
-
-                    {settingsNav.some(i => i.show) && (
-                        <div className="pt-6 pb-2">
-                            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Administration</p>
-                        </div>
-                    )}
-                    {settingsNav.filter(i => i.show).map((item) => {
+                    {/* HUB QUALIFICATION */}
+                    <div className="pb-2">
+                        <p className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Qualification</p>
+                    </div>
+                    {commercialNav.filter(i => i.show).map((item) => {
                         const isActive = pathname === item.href;
                         return (
                             <Link
-                                key={item.href}
+                                key={item.name}
                                 href={item.href}
                                 className={`
-                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                  ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                `}
+                                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
+                                  ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                                `}
                             >
                                 <item.icon size={18} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
+                                {item.name}
+                            </Link>
+                        )
+                    })}
+
+                    {/* HUB SUIVI FORMATION */}
+                    <div className="pt-6 pb-2">
+                        <p className="px-3 text-[10px] font-black text-blue-500 uppercase tracking-widest">Suivi Formation</p>
+                    </div>
+                    {trainingNav.filter(i => i.show).map((item) => {
+                        const isActive = pathname.startsWith(item.href);
+                        return (
+                            <Link
+                                key={item.name}
+                                href={item.href}
+                                className={`
+                                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
+                                  ${isActive ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                                `}
+                            >
+                                <item.icon size={18} className={isActive ? 'text-blue-600' : 'text-slate-400'} />
+                                {item.name}
+                            </Link>
+                        )
+                    })}
+
+                    {/* HUB EXPLOITATION */}
+                    <div className="pt-6 pb-2">
+                        <p className="px-3 text-[10px] font-black text-purple-500 uppercase tracking-widest">Exploitation Réseau</p>
+                    </div>
+                    {exploitationNav.filter(i => i.show).map((item) => {
+                        const isActive = pathname === '/app/network'
+                            ? (new URLSearchParams(window.location.search).get('tab') === (new URL(item.href, 'http://x').searchParams.get('tab')))
+                            : pathname === item.href;
+                        return (
+                            <Link
+                                key={item.name}
+                                href={item.href}
+                                className={`
+                                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
+                                  ${isActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                                `}
+                            >
+                                <item.icon size={18} className={isActive ? 'text-purple-600' : 'text-slate-400'} />
                                 {item.name}
                             </Link>
                         )

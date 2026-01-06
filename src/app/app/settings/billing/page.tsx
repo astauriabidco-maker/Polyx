@@ -2,268 +2,425 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getFranchiseBillingSummaryAction } from '@/application/actions/billing.actions';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
-    DollarSign, Download, Calendar, ArrowRight, TrendingUp,
-    ChevronLeft, ChevronRight, FileText, PieChart
+    Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
+import {
+    createInvoiceAction,
+    getInvoicesAction,
+    recordPaymentAction,
+    getFinanceStatsAction
+} from '@/application/actions/finance.actions';
+import {
+    DollarSign, Plus, Download, FileText, CheckCircle2,
+    Clock, AlertCircle, TrendingUp, CreditCard, Filter
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useToast } from '@/components/ui/use-toast';
 
-export default function BillingManagementPage() {
-    const { activeOrganization } = useAuthStore();
+export default function FinancePage() {
+    const { activeOrganization, user } = useAuthStore();
+    const { toast } = useToast();
+
+    // State
+    const [invoices, setInvoices] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [billingData, setBillingData] = useState<any[]>([]);
-    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [filterStatus, setFilterStatus] = useState<string>('ALL');
+
+    // Modals
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+    const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
+    // Form Data
+    const [newItem, setNewItem] = useState({ description: '', quantity: 1, unitPrice: 0 });
+    const [invoiceData, setInvoiceData] = useState({
+        payerType: 'COMPANY',
+        payerName: '',
+        items: [] as any[]
+    });
+    const [paymentData, setPaymentData] = useState({ amount: 0, method: 'TRANSFER', reference: '' });
 
     useEffect(() => {
-        if (activeOrganization) {
-            loadBillingData();
+        if (activeOrganization?.id) {
+            loadData();
         }
-    }, [activeOrganization, selectedDate]);
+    }, [activeOrganization?.id, filterStatus]);
 
-    async function loadBillingData() {
+    async function loadData() {
         setIsLoading(true);
-        const res = await getFranchiseBillingSummaryAction(
-            activeOrganization!.id,
-            selectedDate.getMonth(),
-            selectedDate.getFullYear()
-        );
-        if (res.success && res.billingData) {
-            setBillingData(res.billingData);
-        }
+        const [invRes, statRes] = await Promise.all([
+            getInvoicesAction(activeOrganization!.id, filterStatus === 'ALL' ? undefined : filterStatus),
+            getFinanceStatsAction(activeOrganization!.id)
+        ]);
+
+        if (invRes.success) setInvoices(invRes.invoices);
+        if (statRes.success) setStats(statRes.stats);
         setIsLoading(false);
     }
 
-    const nextMonth = () => {
-        setSelectedDate(new Date(selectedDate.setMonth(selectedDate.getMonth() + 1)));
-    };
+    async function handleCreateInvoice() {
+        const res = await createInvoiceAction({
+            organisationId: activeOrganization!.id,
+            ...invoiceData
+        });
 
-    const prevMonth = () => {
-        setSelectedDate(new Date(selectedDate.setMonth(selectedDate.getMonth() - 1)));
-    };
+        if (res.success) {
+            toast({ title: "✅ Facture créée", description: `Réf: ${res.invoice.number}` });
+            setIsCreateOpen(false);
+            setInvoiceData({ payerType: 'COMPANY', payerName: '', items: [] });
+            loadData();
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+    }
 
-    const totalTurnover = billingData.reduce((sum, item) => sum + item.turnoverHt, 0);
-    const totalToInvoice = billingData.reduce((sum, item) => sum + item.totalToInvoice, 0);
-    const totalLeads = billingData.reduce((sum, item) => sum + item.leadCount, 0);
-    const totalExams = billingData.reduce((sum, item) => sum + item.examsAmount, 0);
+    async function handleRecordPayment() {
+        if (!selectedInvoice) return;
 
-    const handleExportCSV = () => {
-        if (billingData.length === 0) return;
+        const res = await recordPaymentAction({
+            invoiceId: selectedInvoice.id,
+            amount: paymentData.amount,
+            method: paymentData.method,
+            reference: paymentData.reference
+        });
 
-        const headers = ["Franchise", "SIRET", "Leads", "Montant Leads (€)", "Chiffre Affaires (€)", "Royalties (%)", "Montant Royalties (€)", "Examens", "Montant Examens (€)", "Total à Facturer (€)"];
-        const rows = billingData.map(item => [
-            item.franchiseName,
-            item.siret || '',
-            item.leadCount,
-            item.leadsAmount.toFixed(2),
-            item.turnoverHt.toFixed(2),
-            item.royaltyRate,
-            item.royaltiesAmount.toFixed(2),
-            item.examsCount,
-            item.examsAmount.toFixed(2),
-            item.totalToInvoice.toFixed(2)
-        ]);
+        if (res.success) {
+            toast({ title: "✅ Paiement enregistré", description: `${paymentData.amount}€ encaissés.` });
+            setIsPaymentOpen(false);
+            setSelectedInvoice(null);
+            loadData();
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+    }
 
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + headers.join(",") + "\n"
-            + rows.map(e => e.join(",")).join("\n");
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `Facturation_Franchises_${format(selectedDate, 'MM_yyyy')}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+    function addItem() {
+        if (!newItem.description || newItem.unitPrice <= 0) return;
+        setInvoiceData(prev => ({
+            ...prev,
+            items: [...prev.items, newItem]
+        }));
+        setNewItem({ description: '', quantity: 1, unitPrice: 0 });
+    }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Monthly Navigation */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
-                        <Calendar size={24} />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900 capitalize italic">
-                            {format(selectedDate, 'MMMM yyyy', { locale: fr })}
-                        </h2>
-                        <p className="text-sm text-slate-500">Période de facturation des redevances</p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-                        <Button variant="ghost" size="sm" onClick={prevMonth} className="h-9 w-9 hover:bg-white rounded-lg p-0">
-                            <ChevronLeft size={18} />
-                        </Button>
-                        <div className="px-4 font-bold text-sm text-slate-600 min-w-[120px] text-center">
-                            Changer de mois
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={nextMonth} className="h-9 w-9 hover:bg-white rounded-lg p-0">
-                            <ChevronRight size={18} />
-                        </Button>
-                    </div>
-                    <Button
-                        onClick={handleExportCSV}
-                        className="bg-slate-900 hover:bg-slate-800 h-11 px-6 font-bold flex items-center gap-2"
-                        disabled={billingData.length === 0}
-                    >
-                        <Download size={18} /> Exporter .CSV
-                    </Button>
-                </div>
-            </div>
-
+        <div className="space-y-6">
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="border shadow-none">
+                <Card className="bg-white border-slate-200">
                     <CardContent className="p-6">
-                        <p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">CA Réseau Global</p>
-                        <div className="flex items-end gap-2">
-                            <p className="text-3xl font-black text-slate-900">{totalTurnover.toLocaleString()}€</p>
-                            <Badge className="mb-1 bg-emerald-50 text-emerald-600 border-emerald-100">+12%</Badge>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border shadow-none">
-                    <CardContent className="p-6">
-                        <p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Total Leads Transférés</p>
-                        <div className="flex items-end gap-2">
-                            <p className="text-3xl font-black text-slate-900">{totalLeads}</p>
-                            <div className="h-8 w-16 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mb-1">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase">CA Facturé</p>
+                                <h3 className="text-2xl font-black text-slate-900 mt-1">{stats?.totalBilled?.toLocaleString('fr-FR') || 0}€</h3>
+                            </div>
+                            <div className="h-8 w-8 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600">
                                 <TrendingUp size={16} />
                             </div>
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border shadow-none">
+
+                <Card className="bg-white border-slate-200">
                     <CardContent className="p-6">
-                        <p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Frais Examens (CCI)</p>
-                        <div className="flex items-end gap-2">
-                            <p className="text-3xl font-black text-slate-900">{totalExams.toLocaleString()}€</p>
-                            <Badge className="mb-1 bg-blue-50 text-blue-600 border-blue-100">Réseau</Badge>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase">Encaissé</p>
+                                <h3 className="text-2xl font-black text-emerald-600 mt-1">{stats?.totalPaid?.toLocaleString('fr-FR') || 0}€</h3>
+                            </div>
+                            <div className="h-8 w-8 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600">
+                                <CheckCircle2 size={16} />
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-emerald-200 bg-emerald-50/20 shadow-none">
+
+                <Card className="bg-white border-slate-200">
                     <CardContent className="p-6">
-                        <p className="text-sm font-bold text-emerald-700 mb-1 uppercase tracking-wider">Total à Facturer</p>
-                        <p className="text-3xl font-black text-emerald-600">{totalToInvoice.toLocaleString()}€</p>
-                        <p className="text-[10px] text-emerald-500/80 mt-1 font-bold">Montant HT Global</p>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase">Reste à Recouvrer</p>
+                                <h3 className="text-2xl font-black text-amber-600 mt-1">{stats?.totalDue?.toLocaleString('fr-FR') || 0}€</h3>
+                            </div>
+                            <div className="h-8 w-8 bg-amber-100 rounded-lg flex items-center justify-center text-amber-600">
+                                <Clock size={16} />
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
-                <Card className="border shadow-none bg-slate-900 text-white">
+
+                <Card className="bg-white border-slate-200">
                     <CardContent className="p-6">
-                        <p className="text-sm font-bold text-slate-400 mb-1 uppercase tracking-wider">Taux de Collecte</p>
-                        <p className="text-3xl font-black">98.5%</p>
-                        <div className="h-1 bg-slate-700 w-full rounded-full mt-3 overflow-hidden">
-                            <div className="h-full bg-emerald-400 w-[98.5%] shadow-[0_0_10px_rgba(52,211,153,0.5)]"></div>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase">Taux Recouvrement</p>
+                                <h3 className="text-2xl font-black text-slate-900 mt-1">{Math.round(stats?.collectionRate || 0)}%</h3>
+                            </div>
+                            <div className="h-8 w-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600">
+                                <PieChartIcon size={16} />
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Table Area */}
-            <Card className="border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
-                <CardHeader className="bg-white border-b border-slate-100 flex flex-row items-center justify-between py-6">
-                    <div>
-                        <CardTitle className="text-xl font-black text-slate-900">Synthèse de Facturation par Franchise</CardTitle>
-                        <p className="text-sm text-slate-500">Détail des montants calculés par entité pour la période sélectionnée.</p>
-                    </div>
-                    <Badge variant="outline" className="bg-slate-50">
-                        {billingData.length} entités calculées
+            {/* Actions Bar */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Badge
+                        variant={filterStatus === 'ALL' ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => setFilterStatus('ALL')}
+                    >
+                        Toutes
                     </Badge>
-                </CardHeader>
-                <CardContent className="p-0 overflow-x-auto">
-                    {isLoading ? (
-                        <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-                            <div className="h-12 w-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                            <p className="font-bold">Calcul des redevances en cours...</p>
-                        </div>
-                    ) : billingData.length > 0 ? (
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                                <tr>
-                                    <th className="px-6 py-4">Structure Philiale / Franchise</th>
-                                    <th className="px-6 py-4">Leads</th>
-                                    <th className="px-6 py-4">Examens</th>
-                                    <th className="px-6 py-4">CA & Royalties</th>
-                                    <th className="px-6 py-4 text-right">Net à Facturer (HT)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50 font-medium">
-                                {billingData.map((item) => (
-                                    <tr key={item.franchiseId} className="hover:bg-slate-50/30 transition-colors group">
-                                        <td className="px-6 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-black group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                                                    {item.franchiseName.slice(0, 2).toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <p className="text-slate-900 font-bold">{item.franchiseName}</p>
-                                                    <p className="text-[10px] text-slate-400 font-mono tracking-tighter">{item.siret}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex flex-col">
-                                                <span className="text-slate-900 font-bold">{item.leadCount} leads</span>
-                                                <span className="text-[10px] text-slate-400">x {item.leadPrice}€/u = {item.leadsAmount.toLocaleString()}€</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex flex-col">
-                                                <span className="text-slate-900 font-bold">{item.examsCount} cand.</span>
-                                                <span className="text-[10px] text-slate-400">{item.examsAmount.toLocaleString()}€</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-slate-900 font-black">{item.turnoverHt.toLocaleString()}€</span>
-                                                    <span className="text-emerald-600 font-black text-xs">{item.royaltyRate}%</span>
-                                                </div>
-                                                <span className="text-[10px] text-slate-400">Roy.: {item.royaltiesAmount.toLocaleString()}€</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5 text-right">
-                                            <span className="text-xl font-black text-slate-900">{item.totalToInvoice.toLocaleString()}€</span>
-                                            <p className="text-[10px] text-slate-400 uppercase font-black mt-0.5">HT</p>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-                            <PieChart size={48} className="mb-4 opacity-20" />
-                            <p className="font-bold">Aucune donnée de facturation pour cette période.</p>
-                            <p className="text-sm">Assurez-vous que des franchises sont actives et ont généré du flux.</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Footer Alert */}
-            <div className="bg-indigo-600 rounded-3xl p-6 text-white flex items-center justify-between shadow-xl shadow-indigo-100">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-inner">
-                        <DollarSign size={24} />
-                    </div>
-                    <div>
-                        <h4 className="font-black text-lg italic">Prêt pour l'émission des factures ?</h4>
-                        <p className="text-indigo-100 text-sm">Les montants incluent les redevances fixes et variables paramétrées dans les contrats.</p>
-                    </div>
+                    <Badge
+                        variant={filterStatus === 'PAID' ? 'default' : 'outline'}
+                        className="cursor-pointer hover:bg-emerald-100 hover:text-emerald-700 bg-white"
+                        onClick={() => setFilterStatus('PAID')}
+                    >
+                        Payées
+                    </Badge>
+                    <Badge
+                        variant={filterStatus === 'OVERDUE' ? 'default' : 'outline'}
+                        className="cursor-pointer hover:bg-red-100 hover:text-red-700 bg-white"
+                        onClick={() => setFilterStatus('OVERDUE')}
+                    >
+                        En Retard
+                    </Badge>
                 </div>
-                <Button className="bg-white text-indigo-600 hover:bg-indigo-50 font-black px-8">
-                    Générer les documents <ArrowRight size={18} className="ml-2" />
-                </Button>
+
+                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                    <DialogTrigger asChild>
+                        <Button className="bg-indigo-600 gap-2">
+                            <Plus size={16} /> Nouvelle Facture
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Créer une Facture</DialogTitle>
+                            <DialogDescription>Édition manuelle (hors flux automatique)</DialogDescription>
+                        </DialogHeader>
+
+                        <div className="grid grid-cols-2 gap-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Type Payeur</Label>
+                                <select
+                                    className="w-full border rounded-md p-2 text-sm"
+                                    value={invoiceData.payerType}
+                                    onChange={(e) => setInvoiceData({ ...invoiceData, payerType: e.target.value })}
+                                >
+                                    <option value="COMPANY">Entreprise</option>
+                                    <option value="OPCO">OPCO</option>
+                                    <option value="PARTICULIER">Particulier</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Nom Payeur</Label>
+                                <Input
+                                    value={invoiceData.payerName}
+                                    onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
+                                    placeholder="Ex: ACME Corp"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-4 rounded-lg space-y-3">
+                            <Label>Ajouter Ligne</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    className="flex-1"
+                                    placeholder="Désignation"
+                                    value={newItem.description}
+                                    onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                                />
+                                <Input
+                                    type="number" className="w-20" placeholder="Qty"
+                                    value={newItem.quantity}
+                                    onChange={(e) => setNewItem({ ...newItem, quantity: parseFloat(e.target.value) })}
+                                />
+                                <Input
+                                    type="number" className="w-24" placeholder="Prix"
+                                    value={newItem.unitPrice}
+                                    onChange={(e) => setNewItem({ ...newItem, unitPrice: parseFloat(e.target.value) })}
+                                />
+                                <Button size="icon" variant="secondary" onClick={addItem}>
+                                    <Plus size={16} />
+                                </Button>
+                            </div>
+
+                            {invoiceData.items.length > 0 && (
+                                <div className="mt-4 space-y-2">
+                                    {invoiceData.items.map((item, i) => (
+                                        <div key={i} className="flex justify-between text-sm bg-white p-2 border rounded">
+                                            <span>{item.description} (x{item.quantity})</span>
+                                            <span className="font-mono font-bold">{(item.unitPrice * item.quantity).toFixed(2)}€</span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between pt-2 border-t font-bold">
+                                        <span>TOTAL</span>
+                                        <span>{invoiceData.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0).toFixed(2)}€</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button onClick={handleCreateInvoice} disabled={invoiceData.items.length === 0}>Créer Facture</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
+
+            {/* Invoices List */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs border-b border-slate-200">
+                        <tr>
+                            <th className="p-4">Numéro</th>
+                            <th className="p-4">Payeur</th>
+                            <th className="p-4">Date</th>
+                            <th className="p-4">Montant TTC</th>
+                            <th className="p-4">Reste Dû</th>
+                            <th className="p-4">Statut</th>
+                            <th className="p-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {invoices.length === 0 ? (
+                            <tr>
+                                <td colSpan={7} className="p-8 text-center text-slate-500">Aucune facture trouvée</td>
+                            </tr>
+                        ) : invoices.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-slate-50/50">
+                                <td className="p-4 font-mono font-medium text-slate-700">{inv.number}</td>
+                                <td className="p-4">
+                                    <div className="font-bold text-slate-900">{inv.payerName}</div>
+                                    <div className="text-xs text-slate-500">{inv.payerType}</div>
+                                </td>
+                                <td className="p-4 text-slate-600">
+                                    {format(new Date(inv.date), 'dd/MM/yyyy')}
+                                </td>
+                                <td className="p-4 font-bold text-slate-900">
+                                    {inv.totalAmount.toLocaleString('fr-FR')}€
+                                </td>
+                                <td className="p-4 font-mono text-slate-600">
+                                    {inv.balanceDue > 0 ? `${inv.balanceDue.toLocaleString('fr-FR')}€` : '-'}
+                                </td>
+                                <td className="p-4">
+                                    <StatusBadge status={inv.status} />
+                                </td>
+                                <td className="p-4 text-right flex justify-end gap-2">
+                                    {inv.balanceDue > 0 && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1"
+                                            onClick={() => {
+                                                setSelectedInvoice(inv);
+                                                setPaymentData({ ...paymentData, amount: inv.balanceDue });
+                                                setIsPaymentOpen(true);
+                                            }}
+                                        >
+                                            <CreditCard size={14} /> Encaisser
+                                        </Button>
+                                    )}
+                                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-slate-100">
+                                        <Download size={16} className="text-slate-400" />
+                                    </Button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Payment Modal */}
+            <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Enregistrer un Paiement</DialogTitle>
+                        <DialogDescription>Facture {selectedInvoice?.number}</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>MontantReçu (€)</Label>
+                            <Input
+                                type="number"
+                                value={paymentData.amount}
+                                onChange={(e) => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Mode de Paiement</Label>
+                            <select
+                                className="w-full border rounded-md p-2 text-sm"
+                                value={paymentData.method}
+                                onChange={(e) => setPaymentData({ ...paymentData, method: e.target.value })}
+                            >
+                                <option value="TRANSFER">Virement Bancaire</option>
+                                <option value="CHECK">Chèque</option>
+                                <option value="CARD">Carte Bancaire</option>
+                                <option value="CPF_AUTO">Virement CPF (Caisse Dépôts)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Référence Transaction</Label>
+                            <Input
+                                placeholder="ex: VIR-2026-X892"
+                                value={paymentData.reference}
+                                onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={handleRecordPayment} className="bg-emerald-600 hover:bg-emerald-700">Enregistrer</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
+}
+
+function StatusBadge({ status }: { status: string }) {
+    const styles = {
+        DRAFT: "bg-slate-100 text-slate-600",
+        SENT: "bg-blue-100 text-blue-700",
+        PARTIAL: "bg-amber-100 text-amber-700",
+        PAID: "bg-emerald-100 text-emerald-700",
+        OVERDUE: "bg-red-100 text-red-700",
+        CANCELLED: "bg-slate-200 text-slate-500 line-through"
+    };
+
+    // @ts-ignore
+    const style = styles[status] || styles.DRAFT;
+
+    const labels = {
+        DRAFT: "Brouillon",
+        SENT: "Envoyée",
+        PARTIAL: "Partiel",
+        PAID: "Payée",
+        OVERDUE: "En Retard",
+        CANCELLED: "Annulée"
+    };
+
+    // @ts-ignore
+    return <Badge className={`${style} border-none shadow-none`}>{labels[status]}</Badge>;
+}
+
+function PieChartIcon({ size }: { size: number }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+            <path d="M22 12A10 10 0 0 0 12 2v10z" />
+        </svg>
+    )
 }

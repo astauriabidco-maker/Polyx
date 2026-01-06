@@ -42,18 +42,18 @@ async function main() {
     ];
 
     for (const m of mappings) {
-        await prisma.branchMapping.upsert({
+        await prisma.agencyMapping.upsert({
             where: {
-                organisationId_externalBranchId: {
+                organisationId_externalAgencyId: {
                     organisationId: orgId,
-                    externalBranchId: m.external
+                    externalAgencyId: m.external
                 }
             },
-            update: { internalBranchId: m.internal },
+            update: { internalAgencyId: m.internal },
             create: {
                 organisationId: orgId,
-                externalBranchId: m.external,
-                internalBranchId: m.internal
+                externalAgencyId: m.external,
+                internalAgencyId: m.internal
             }
         });
     }
