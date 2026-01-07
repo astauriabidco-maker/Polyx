@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { GraduationCap, Search, Filter, Plus, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
+import { RefreshCcw } from 'lucide-react';
+import { syncEdofDossiersAction } from '@/application/actions/edof.actions';
 
 export default function LearnersPage() {
     const { activeOrganization } = useAuthStore();
@@ -17,6 +19,7 @@ export default function LearnersPage() {
     const [learners, setLearners] = useState<Learner[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
         if (activeOrganization) {
@@ -50,10 +53,32 @@ export default function LearnersPage() {
                     </h1>
                     <p className="text-slate-500">Suivi administratif et pédagogique des dossiers validés.</p>
                 </div>
-                <Button className="bg-emerald-600 hover:bg-emerald-700">
-                    <Plus size={16} className="mr-2" />
-                    Nouvel Apprenant
-                </Button>
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        className="rounded-xl font-bold border-slate-200"
+                        onClick={async () => {
+                            if (!activeOrganization) return;
+                            setIsSyncing(true);
+                            const res = await syncEdofDossiersAction(activeOrganization.id);
+                            if (res.success) {
+                                alert(res.message);
+                                loadLearners(); // Reload list
+                            } else {
+                                alert(res.error);
+                            }
+                            setIsSyncing(false);
+                        }}
+                        disabled={isSyncing}
+                    >
+                        <RefreshCcw size={16} className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                        Synchroniser EDOF
+                    </Button>
+                    <Button className="bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold">
+                        <Plus size={16} className="mr-2" />
+                        Nouvel Apprenant
+                    </Button>
+                </div>
             </header>
 
             {/* Filters */}

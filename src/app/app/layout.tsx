@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutGrid, ChartBar, Users, BookOpen, GraduationCap,
     Fingerprint, Briefcase, Folder, ShieldCheck, Settings2,
-    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit
+    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit, Calendar
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
@@ -27,6 +27,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     const commercialNav = [
         { name: 'Tableau de Bord', href: '/app/dashboard', icon: ChartBar, show: true },
+        { name: 'Agenda Intelligent', href: '/app/agenda', icon: Calendar, show: true },
         { name: 'Leads & Marketing', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
         { name: 'CRM & Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
     ];
@@ -35,6 +36,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Mes Apprenants', href: '/app/learners', icon: GraduationCap, show: true },
         { name: 'Suivi Émargement', href: '/app/attendance', icon: Fingerprint, show: true },
         { name: 'Sessions d\'Examens', href: '/app/network?tab=exams', icon: ClipboardCheck, show: true },
+        { name: 'Gestion Formateurs', href: '/app/formateur', icon: Users, show: hasPermission('canEditUsers') },
         { name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: BookOpen, show: hasPermission('canManageCourses') },
         { name: 'Qualité / Audit', href: '/app/quality', icon: ShieldCheck, show: hasPermission('canManageCourses') },
         { name: 'Veille & Écosystème', href: '/app/veille', icon: Radar, show: hasPermission('canManageCourses') },
@@ -44,12 +46,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Structure & Agences', href: '/app/network?tab=agencies', icon: MapPin, show: hasPermission('canEditUsers') },
         { name: 'Gestion Franchises', href: '/app/network?tab=franchises', icon: Network, show: hasPermission('canEditUsers') },
         { name: 'Redevances & Factures', href: '/app/network?tab=billing', icon: DollarSign, show: hasPermission('canEditUsers') },
+        { name: 'Facturation Client', href: '/app/billing/invoices', icon: FileText, show: true }, // New Invoice Module active
         { name: 'Administration', href: '/app/settings/management', icon: Settings2, show: hasPermission('canEditUsers') },
         { name: 'Planificateur (CRON)', href: '/app/settings/scheduler', icon: Terminal, show: hasPermission('canEditUsers') },
         { name: 'Audit & Contrôle', href: '/app/audit', icon: ShieldCheck, show: hasPermission('canEditUsers') },
         { name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet, show: hasPermission('canEditUsers') },
         { name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit, show: hasPermission('canEditUsers') },
+        { name: 'Intégrations API', href: '/app/settings/integrations', icon: Settings2, show: hasPermission('canEditUsers') },
     ];
+
 
     // Prevent hydration mismatch by not rendering permission-dependent UI until mounted
     if (!mounted) {

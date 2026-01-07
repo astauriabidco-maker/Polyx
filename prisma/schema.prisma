@@ -36,11 +36,15 @@ model User {
   sessions       Session[]
   leadActivities LeadActivity[]
   calls          Call[]
+  calendarEvents CalendarEvent[]
+  formateur      Formateur? // Trainer profile if applicable
 
   // B2B Portal
   clientCompanyId String?
   clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id])
 
+  googleRefreshToken String? // For Calendar Sync
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -99,10 +103,157 @@ model Organisation {
   // Strategic Reports
   strategicReports    StrategicReport[]
 
+  // Intelligent Agenda
+  calendarEvents      CalendarEvent[]
+
+  // Formateur Management
+  formateurs          Formateur[]
+  formateurInvoices   FormateurInvoice[]
+
+  // Wallet & Credits
+  wallet              Wallet?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("organisations")
+}
+
+// ============================================
+// FORMATEUR (TRAINER) MANAGEMENT
+// ============================================
+
+model Formateur {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  // Link to User for login access (optional)
+  userId         String? @unique
+  user           User? @relation(fields: [userId], references: [id])
+  
+  // Identity
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  
+  // Business Info
+  nda            String? // Numéro de Déclaration d'Activité
+  hourlyRate     Float @default(30)
+  siret          String?
+  iban           String?
+  
+  // Address
+  street         String?
+  zipCode        String?
+  city           String?
+  
+  // Status
+  isActive       Boolean @default(true)
+  isValidated    Boolean @default(false)
+  
+  // Relations
+  documents      FormateurDocument[]
+  invoices       FormateurInvoice[]
+  sessions       TrainingSession[]
+  folders        LearnerFolder[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organisationId])
+  @@map("formateurs")
+}
+
+model FormateurDocument {
+  id           String @id @default(cuid())
+  formateurId  String
+  formateur    Formateur @relation(fields: [formateurId], references: [id], onDelete: Cascade)
+  
+  type         String // CV, DIPLOME, KBIS, VIGILANCE, NDA, CONTRAT
+  fileName     String
+  fileUrl      String
+  
+  status       String @default("PENDING") // PENDING, VALIDATED, REJECTED
+  rejectionReason String?
+  
+  validatedAt  DateTime?
+  expiresAt    DateTime? // For documents with expiration (e.g., Vigilance)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([formateurId])
+  @@map("formateur_documents")
+}
+
+model FormateurInvoice {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  
+  formateurId    String
+  formateur      Formateur @relation(fields: [formateurId], references: [id])
+  
+  // Invoice Details
+  number         String
+  date           DateTime @default(now())
+  dueDate        DateTime
+  
+  // Financials
+  hoursWorked    Float
+  hourlyRate     Float
+  totalAmount    Float
+  
+  status         String @default("PENDING") // PENDING, VALIDATED, PAID
+  paidAt         DateTime?
+  
+  // Meta
+  fileUrl        String? // Attached invoice PDF from formateur
+  notes          String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organisationId, number])
+  @@index([formateurId])
+  @@map("formateur_invoices")
+}
+
+model CalendarEvent {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  agencyId       String?
+  agency         Agency? @relation(fields: [agencyId], references: [id])
+  
+  leadId         String?
+  lead           Lead? @relation(fields: [leadId], references: [id])
+  
+  userId         String // Assignee/Collaborator
+  user           User @relation(fields: [userId], references: [id])
+
+  title          String
+  description    String?
+  
+  start          DateTime
+  end            DateTime
+  
+  type           String @default("MEETING") // MEETING, CALL, INTERNAL, SESSION
+  status         String @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+  
+  googleEventId  String? // Sync with Google Calendar
+  metadata       Json? // For extra smart data
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organisationId])
+  @@index([userId])
+  @@index([start, end])
+  @@map("calendar_events")
 }
 
 // ============================================
@@ -334,7 +485,8 @@ model LearnerFolder {
   weeklyIntensity    String? // ex: "10h"
 
   // Formateur Assignment
-  formateurId    String? // Link to User (formateur)
+  formateurId    String? // Link to Formateur
+  formateur      Formateur? @relation(fields: [formateurId], references: [id])
   formateurNda   String? // NDA du formateur
   formateurCvUrl String? // CV du formateur
 
@@ -357,6 +509,13 @@ model LearnerFolder {
   surveys        SatisfactionSurvey[]
   complaints     Complaint[]
   invoices       Invoice[]
+
+  // LMS Integration
+  lmsEnrollmentId  String?   // Enrollment ID from LMS
+  lmsEnrolledAt    DateTime? // When enrolled in LMS
+  lmsGrade         Float?    // Grade from LMS (0-100)
+  lmsCompletion    Float?    // Completion % from LMS
+  lmsLastSyncAt    DateTime? // Last sync time
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -423,6 +582,10 @@ model LearnerDocument {
 
   isRequired Boolean @default(true)
 
+  // Yousign Integration
+  yousignProcedureId String?
+  yousignStatus      String? // started, finished, refused, expired
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -447,6 +610,11 @@ model Training {
 
   isActive  Boolean           @default(true)
   examId    String? // Optionnel : lien vers un examen spécifique
+  
+  // LMS Integration
+  externalCourseId String? // Course ID in external LMS (Moodle/360L)
+  lmsProvider      String? // 'MOODLE' | '360LEARNING'
+  
   folders   LearnerFolder[]
   sessions  TrainingSession[]
   createdAt DateTime          @default(now())
@@ -508,6 +676,7 @@ model Lead {
   agency       Agency?        @relation(fields: [agencyId], references: [id])
   activities   LeadActivity[]
   calls        Call[]
+  calendarEvents CalendarEvent[]
   learner      Learner? // This is the reverse relation from Learner.leadId
 
   createdAt DateTime @default(now())
@@ -659,6 +828,7 @@ model Agency {
   learners       Learner[]
   sessions       TrainingSession[]
   examSessions   ExamSession[] @relation("AgencySessions")
+  calendarEvents CalendarEvent[]
   users          UserAgency[]
 
   createdAt DateTime @default(now())
@@ -776,11 +946,135 @@ model IntegrationConfig {
   roiThresholdHigh Float @default(5.0)
   roiThresholdLow  Float @default(1.0)
 
+  // ═══════════════════════════════════════════════════════════
+  // WHATSAPP INTEGRATION (Encrypted API Keys)
+  // ═══════════════════════════════════════════════════════════
+  whatsappProvider       String?  // 'twilio' | 'meta' | null
+  
+  // Twilio Credentials (AES-256 Encrypted)
+  twilioAccountSid       String?  // Encrypted
+  twilioAuthToken        String?  // Encrypted
+  twilioWhatsappNumber   String?  // Encrypted
+  
+  // Meta Cloud API Credentials (AES-256 Encrypted)
+  metaPhoneNumberId      String?  // Encrypted
+  metaAccessToken        String?  // Encrypted
+  
+  // Status & Audit
+  whatsappEnabled        Boolean  @default(false)
+  whatsappLastTestedAt   DateTime?
+  whatsappTestStatus     String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // SMS INTEGRATION (Twilio)
+  // Uses twilioAccountSid & twilioAuthToken from above
+  // ═══════════════════════════════════════════════════════════
+  smsEnabled             Boolean  @default(false)
+  twilioSmsFrom          String?  // Phone Number or Alphanumeric Sender ID
+  smsLastTestedAt        DateTime?
+  smsTestStatus          String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // GOOGLE CALENDAR INTEGRATION (OAuth 2.0)
+  // ═══════════════════════════════════════════════════════════
+  googleCalendarEnabled     Boolean  @default(false)
+  googleAccessToken         String?  // Encrypted
+  googleRefreshToken        String?  // Encrypted
+  googleTokenExpiry         DateTime?
+  googleCalendarId          String?  // Selected calendar ID
+  googleConnectedEmail      String?  // User who connected
+  googleLastSyncAt          DateTime?
+  googleSyncStatus          String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // YOUSIGN INTEGRATION (Electronic Signature)
+  // ═══════════════════════════════════════════════════════════
+  yousignEnabled         Boolean  @default(false)
+  yousignApiKey          String?  // Encrypted
+  yousignEnvironment     String?  // 'sandbox' | 'production'
+  yousignLastTestedAt    DateTime?
+  yousignTestStatus      String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // STRIPE PAYMENT INTEGRATION
+  // ═══════════════════════════════════════════════════════════
+  stripeEnabled          Boolean  @default(false)
+  stripeSecretKey        String?  // Encrypted
+  stripePublishableKey   String?
+  stripeWebhookSecret    String?  // Encrypted
+  stripeLastTestedAt     DateTime?
+  stripeTestStatus       String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // EMAIL PROVIDER INTEGRATION (SendGrid / Brevo)
+  // ═══════════════════════════════════════════════════════════
+  emailEnabled           Boolean  @default(false)
+  emailProvider          String?  // 'SENDGRID' | 'BREVO' | 'RESEND'
+  emailApiKey            String?  // Encrypted
+  emailFromAddress       String?
+  emailFromName          String?
+  emailLastTestedAt      DateTime?
+  emailTestStatus        String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // AI PROVIDER INTEGRATION (Gemini / OpenAI)
+  // ═══════════════════════════════════════════════════════════
+  aiEnabled              Boolean  @default(false)
+  aiProvider             String?  // 'GEMINI' | 'OPENAI'
+  aiApiKey               String?  // Encrypted
+  aiModel                String?  // e.g., 'gemini-1.5-flash', 'gpt-4o-mini'
+  aiLastTestedAt         DateTime?
+  aiTestStatus           String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // LMS INTEGRATION (Moodle / 360Learning)
+  // ═══════════════════════════════════════════════════════════
+  lmsEnabled             Boolean  @default(false)
+  lmsProvider            String?  // 'MOODLE' | '360LEARNING'
+  lmsApiUrl              String?  // e.g., https://moodle.example.com
+  lmsApiKey              String?  // Encrypted (Moodle token or 360L API Key)
+  lmsApiSecret           String?  // Encrypted (360L Secret only)
+  lmsLastTestedAt        DateTime?
+  lmsTestStatus          String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // EDOF / MonCompteFormation (CPF)
+  // ═══════════════════════════════════════════════════════════
+  edofEnabled            Boolean  @default(false)
+  edofApiKey             String?  // Encrypted - API Key from CDC
+  edofNda                String?  // Numéro de Déclaration d'Activité
+  edofSiret              String?  // SIRET of the organization
+  edofLastSyncAt         DateTime?
+  edofTestStatus         String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // CHORUS PRO (Public Invoicing)
+  // ═══════════════════════════════════════════════════════════
+  chorusEnabled          Boolean  @default(false)
+  chorusClientId         String?  // OAuth Client ID
+  chorusClientSecret     String?  // Encrypted - OAuth Client Secret
+  chorusAccountLogin     String?  // cpro-account login (base64 encoded)
+  chorusAccountPassword  String?  // Encrypted
+  chorusEnvironment      String?  // 'sandbox' | 'production'
+  chorusLastTestedAt     DateTime?
+  chorusTestStatus       String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // KAIROS (France Travail / Pôle Emploi)
+  // ═══════════════════════════════════════════════════════════
+  kairosEnabled          Boolean  @default(false)
+  kairosApiKey           String?  // Encrypted
+  kairosOrganismId       String?  // Identifiant organisme
+  kairosLastSyncAt       DateTime?
+  kairosTestStatus       String?  // 'success' | 'failed' | null
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("integration_configs")
 }
+
+
 
 model AgencyMapping {
   id             String       @id @default(cuid())
@@ -805,7 +1099,8 @@ model TrainingSession {
   trainingId String?
   training   Training? @relation(fields: [trainingId], references: [id])
 
-  formateurId   String? // Link to User (formateur)
+  formateurId   String? // Link to Formateur
+  formateur     Formateur? @relation(fields: [formateurId], references: [id])
   formateurName String?
 
   agencyId String?
@@ -916,6 +1211,12 @@ model EcosystemPartner {
   contactPhone String?
   website      String?
   
+  // Billing Info for OPCOs
+  siret       String?
+  street      String?
+  zipCode     String?
+  city        String?
+
   conventionUrl  String?  // Document de convention
   conventionDate DateTime?
   
@@ -1107,6 +1408,11 @@ model Invoice {
   
   // Invoice Core
   number         String       // e.g., INV-2026-0001
+  
+  // Chorus Pro (Public Sector)
+  chorusEngagement   String?  // Numéro d'engagement (engagementNumber)
+  chorusServiceCode  String?  // Code service Chorus
+  
   date           DateTime     @default(now())
   dueDate        DateTime
   status         String       @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
@@ -1123,6 +1429,10 @@ model Invoice {
   privateNote    String?      // Internal use
   pdfUrl         String?      // Link to generated PDF
   sentAt         DateTime?
+
+  // Stripe
+  stripePaymentLinkId String?
+  stripePaymentUrl    String?
   
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -1268,4 +1578,39 @@ model EvidenceMetric {
   proofUrl       String? // Link to generated PDF proof
 
   @@map("evidence_metrics")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WALLET & CREDITS SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Wallet {
+  id              String    @id @default(cuid())
+  organisationId  String    @unique
+  organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  balance         Float     @default(0.0) // Wallet balance in currency units (e.g. EUR)
+  currency        String    @default("EUR")
+  
+  transactions    WalletTransaction[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String    @id @default(cuid())
+  walletId        String
+  wallet          Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  amount          Float     // Positive for deposit, negative for usage
+  type            String    // 'DEPOSIT', 'USAGE', 'REFUND', 'BONUS'
+  reference       String?   // "SMS to +33...", "Stripe Charge #..."
+  metadata        Json?     // Extra details
+  
+  createdAt       DateTime  @default(now())
+
+  @@map("wallet_transactions")
 }

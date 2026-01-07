@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { UserPlus, Archive, CheckSquare, X, ChevronUp, Loader2 } from 'lucide-react';
+import { UserPlus, Archive, CheckSquare, X, ChevronUp, Loader2, Send } from 'lucide-react';
+import { CommunicationModal } from '@/components/communication/communication-modal';
 import { Button } from '@/components/ui/button';
 import { LeadStatus, SalesStage } from '@/domain/entities/lead';
 import {
@@ -23,6 +24,7 @@ interface BulkActionBarProps {
 export function BulkActionBar({ selectedIds, onClear, onActionComplete, bulkUpdateAction, salesReps }: BulkActionBarProps) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [actionType, setActionType] = useState<string | null>(null);
+    const [showCommModal, setShowCommModal] = useState(false);
 
     const handleBulkAction = async (updates: any) => {
         setIsUpdating(true);
@@ -82,7 +84,6 @@ export function BulkActionBar({ selectedIds, onClear, onActionComplete, bulkUpda
                         </SelectContent>
                     </Select>
 
-                    {/* Quick Archive */}
                     <Button
                         variant="outline"
                         onClick={() => handleBulkAction({ status: LeadStatus.ARCHIVED })}
@@ -92,7 +93,27 @@ export function BulkActionBar({ selectedIds, onClear, onActionComplete, bulkUpda
                         {isUpdating ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} className="mr-2" />}
                         Archiver tout
                     </Button>
+
+                    <Button
+                        onClick={() => setShowCommModal(true)}
+                        className="h-10 px-6 bg-indigo-600 hover:bg-indigo-500 text-white font-bold ml-2 shadow-lg shadow-indigo-500/20"
+                    >
+                        <Send size={14} className="mr-2" />
+                        Relancer
+                    </Button>
                 </div>
+
+                {showCommModal && (
+                    <CommunicationModal
+                        leadIds={selectedIds}
+                        onClose={() => setShowCommModal(false)}
+                        onSuccess={() => {
+                            setShowCommModal(false);
+                            onActionComplete();
+                            onClear();
+                        }}
+                    />
+                )}
             </div>
         </div>
     );

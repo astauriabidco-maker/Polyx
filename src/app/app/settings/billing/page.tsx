@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -17,8 +17,13 @@ import {
     getFinanceStatsAction
 } from '@/application/actions/finance.actions';
 import {
+    getWalletDataAction,
+    simulateTopUpAction
+} from '@/application/actions/wallet.actions';
+import {
     DollarSign, Plus, Download, FileText, CheckCircle2,
-    Clock, AlertCircle, TrendingUp, CreditCard, Filter
+    Clock, AlertCircle, TrendingUp, CreditCard, Filter,
+    Wallet, ArrowUpCircle, ArrowDownCircle, Loader2, Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -113,6 +118,9 @@ export default function FinancePage() {
 
     return (
         <div className="space-y-6">
+            {/* WALLET / CREDITS SECTION */}
+            <WalletCard orgId={activeOrganization?.id} />
+
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-white border-slate-200">
@@ -423,4 +431,152 @@ function PieChartIcon({ size }: { size: number }) {
             <path d="M22 12A10 10 0 0 0 12 2v10z" />
         </svg>
     )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WALLET CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function WalletCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [balance, setBalance] = useState(0);
+    const [currency, setCurrency] = useState('EUR');
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+    const [topUpAmount, setTopUpAmount] = useState(50);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadWallet();
+    }, [orgId]);
+
+    async function loadWallet() {
+        setIsLoading(true);
+        const res = await getWalletDataAction(orgId!);
+        if (res.success && res.data) {
+            setBalance(res.data.balance);
+            setCurrency(res.data.currency);
+            setTransactions(res.data.transactions);
+        }
+        setIsLoading(false);
+    }
+
+    async function handleTopUp() {
+        if (topUpAmount <= 0) return;
+        setIsProcessing(true);
+        const res = await simulateTopUpAction(orgId!, topUpAmount);
+        if (res.success) {
+            toast({ title: "✅ Portefeuille rechargé", description: `+${topUpAmount}€ ajoutés`, className: "bg-green-600 text-white" });
+            loadWallet();
+            setIsTopUpOpen(false);
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+        setIsProcessing(false);
+    }
+
+    if (isLoading) {
+        return (
+            <Card className="border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50">
+                <CardContent className="p-6 flex items-center justify-center">
+                    <Loader2 className="animate-spin text-violet-500 mr-2" /> Chargement...
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Card className="border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 overflow-hidden">
+            <CardHeader className="pb-0">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 bg-gradient-to-br from-violet-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-200">
+                            <Wallet className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-lg text-violet-900">Portefeuille Polyx</CardTitle>
+                            <CardDescription className="text-violet-600">Crédits pour SMS, Emails, IA</CardDescription>
+                        </div>
+                    </div>
+                    <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="bg-violet-600 hover:bg-violet-700 gap-2 shadow-lg shadow-violet-200">
+                                <Sparkles size={16} /> Recharger
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Recharger votre Portefeuille</DialogTitle>
+                                <DialogDescription>Ajoutez des crédits pour utiliser les services intégrés</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-6 space-y-4">
+                                <div className="grid grid-cols-3 gap-3">
+                                    {[10, 50, 100].map(amt => (
+                                        <Button
+                                            key={amt}
+                                            variant={topUpAmount === amt ? "primary" : "outline"}
+                                            className={topUpAmount === amt ? "bg-violet-600" : ""}
+                                            onClick={() => setTopUpAmount(amt)}
+                                        >
+                                            {amt}€
+                                        </Button>
+                                    ))}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Ou montant personnalisé</Label>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        max={1000}
+                                        value={topUpAmount}
+                                        onChange={(e) => setTopUpAmount(parseFloat(e.target.value) || 0)}
+                                        className="text-lg font-bold"
+                                    />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={handleTopUp} disabled={isProcessing || topUpAmount <= 0} className="bg-violet-600 hover:bg-violet-700 w-full">
+                                    {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <CreditCard className="mr-2" size={16} />}
+                                    Payer {topUpAmount}€
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+                {/* Balance Display */}
+                <div className="text-center py-4 bg-white rounded-xl border border-violet-100 shadow-sm">
+                    <p className="text-xs font-bold text-violet-500 uppercase mb-1">Solde Disponible</p>
+                    <p className="text-5xl font-black text-violet-900">{balance.toFixed(2)}<span className="text-2xl ml-1">{currency}</span></p>
+                </div>
+
+                {/* Recent Transactions */}
+                {transactions.length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-xs font-bold text-violet-500 uppercase">Dernières Opérations</p>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {transactions.slice(0, 5).map((tx) => (
+                                <div key={tx.id} className="flex items-center justify-between bg-white p-3 rounded-lg border border-violet-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tx.amount > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                            {tx.amount > 0 ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-800">{tx.reference || tx.type}</p>
+                                            <p className="text-xs text-slate-500">{format(new Date(tx.createdAt), 'dd/MM HH:mm', { locale: fr })}</p>
+                                        </div>
+                                    </div>
+                                    <p className={`font-bold font-mono ${tx.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}€
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
 }

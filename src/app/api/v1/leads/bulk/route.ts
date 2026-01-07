@@ -18,7 +18,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: "Invalid payload format. 'leads' array required." }, { status: 400 });
         }
 
-        const result = await LeadIngestionService.ingestBulk(body.leads, providerId);
+        const result = await LeadIngestionService.ingestBulk(body.leads);
 
         // Always return 200 even for partial success, as per spec (errors array included)
         return NextResponse.json(result);

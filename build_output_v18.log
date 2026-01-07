@@ -1,0 +1,85 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 17.6s
+  Running TypeScript ...
+  Collecting page data using 9 workers ...
+[MockDB] Seeded demo data with Multi-Org Leads and Providers
+[MockDB] Seeded demo data with Multi-Org Leads and Providers
+  Generating static pages using 9 workers (0/49) ...
+  Generating static pages using 9 workers (12/49) 
+  Generating static pages using 9 workers (24/49) 
+[MockDB] Seeded demo data with Multi-Org Leads and Providers
+  Generating static pages using 9 workers (36/49) 
+✓ Generating static pages using 9 workers (49/49) in 953.6ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/auth/google/callback
+├ ƒ /api/cron/[jobId]
+├ ƒ /api/user/access
+├ ƒ /api/v1/branches
+├ ƒ /api/v1/leads/bulk
+├ ƒ /api/webhooks/leads
+├ ○ /app/academy/catalog
+├ ○ /app/agenda
+├ ○ /app/attendance
+├ ƒ /app/attendance/sessions/[id]
+├ ○ /app/audit
+├ ○ /app/billing/invoices
+├ ƒ /app/billing/invoices/[id]
+├ ○ /app/billing/invoices/new
+├ ○ /app/billing/partners
+├ ○ /app/bpf
+├ ○ /app/crm
+├ ○ /app/dashboard
+├ ○ /app/formateur
+├ ○ /app/leads
+├ ○ /app/leads/archives
+├ ○ /app/leads/supervision
+├ ○ /app/learner
+├ ○ /app/learners
+├ ƒ /app/learners/[id]
+├ ○ /app/network
+├ ○ /app/network/exams
+├ ○ /app/quality
+├ ○ /app/reporting
+├ ○ /app/settings/billing
+├ ○ /app/settings/franchises
+├ ○ /app/settings/integrations
+├ ○ /app/settings/legal
+├ ○ /app/settings/management
+├ ○ /app/settings/organization
+├ ○ /app/settings/roles
+├ ○ /app/settings/scheduler
+├ ○ /app/settings/scoring
+├ ○ /app/settings/structure
+├ ○ /app/settings/users
+├ ○ /app/veille
+├ ○ /docs/api
+├ ○ /hub
+├ ○ /login
+├ ƒ /onboarding/[token]
+├ ○ /portal/dashboard
+├ ○ /portal/employees
+├ ○ /portal/invoices
+├ ○ /register
+├ ƒ /report-issue/[folderId]
+├ ƒ /sign/[sessionId]
+├ ○ /super-admin
+└ ƒ /survey/[folderId]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

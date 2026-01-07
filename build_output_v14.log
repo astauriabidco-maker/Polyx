@@ -1,0 +1,24 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 12.1s
+  Running TypeScript ...
+Failed to compile.
+
+./src/application/services/edof.service.ts:149:29
+Type error: Object literal may only specify known properties, and 'status' does not exist in type 'Without<LearnerCreateInput, LearnerUncheckedCreateInput> & LearnerUncheckedCreateInput'.
+
+[0m [90m 147 |[39m                             email[33m:[39m dossier[33m.[39mlearner[33m.[39memail[33m,[39m
+ [90m 148 |[39m                             phone[33m:[39m dossier[33m.[39mlearner[33m.[39mphone[33m,[39m
+[31m[1m>[22m[39m[90m 149 |[39m                             status[33m:[39m [32m'ACTIVE'[39m
+ [90m     |[39m                             [31m[1m^[22m[39m
+ [90m 150 |[39m                         }
+ [90m 151 |[39m                     })[33m;[39m
+ [90m 152 |[39m                 }[0m
+Next.js build worker exited with code: 1 and signal: null

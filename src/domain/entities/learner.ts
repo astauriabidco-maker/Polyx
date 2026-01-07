@@ -48,6 +48,7 @@ export interface Learner {
     address?: string | null;
     postalCode?: string | null;
     city?: string | null;
+    userId?: string | null; // [NEW]
     createdAt: Date;
     folders?: LearnerFolder[];
 }
@@ -59,6 +60,8 @@ export interface LearnerFolder {
     status: LearnerStatus;
     complianceStatus: ComplianceStatus;
     documents?: LearnerDocument[];
+    training?: any; // [NEW]
+    trainingId?: string | null; // [NEW]
     officialStartDate?: Date | null;
     officialEndDate?: Date | null;
     actualStartDate?: Date | null;
@@ -110,4 +113,6 @@ export interface LearnerDocument {
     status: 'MISSING' | 'PENDING_REVIEW' | 'VALID' | 'REJECTED';
     isRequired: boolean;
     fileUrl?: string | null;
+    yousignProcedureId?: string | null;
+    yousignStatus?: string | null;
 }

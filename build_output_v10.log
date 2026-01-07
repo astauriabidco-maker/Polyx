@@ -1,0 +1,25 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 56s
+  Running TypeScript ...
+Failed to compile.
+
+./src/app/app/settings/integrations/page.tsx:790:83
+Type error: Property 'response' does not exist on type '{ success: boolean; response?: string | undefined; error?: string | undefined; } | { success: boolean; error: any; }'.
+  Property 'response' does not exist on type '{ success: boolean; error: any; }'.
+
+[0m [90m 788 |[39m         [36mconst[39m res [33m=[39m [36mawait[39m testAiConnectionAction(orgId[33m![39m)[33m;[39m
+ [90m 789 |[39m         [36mif[39m (res[33m.[39msuccess) {
+[31m[1m>[22m[39m[90m 790 |[39m             toast({ title[33m:[39m [32m"Connexion IA réussie ✨"[39m[33m,[39m description[33m:[39m [32m`Réponse: ${res.response?.substring(0, 50)}...`[39m[33m,[39m className[33m:[39m [32m"bg-green-600 text-white"[39m })[33m;[39m
+ [90m     |[39m                                                                                   [31m[1m^[22m[39m
+ [90m 791 |[39m             loadSettings()[33m;[39m
+ [90m 792 |[39m         } [36melse[39m {
+ [90m 793 |[39m             toast({ title[33m:[39m [32m"Échec connexion"[39m[33m,[39m description[33m:[39m res[33m.[39merror[33m,[39m variant[33m:[39m [32m"destructive"[39m })[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

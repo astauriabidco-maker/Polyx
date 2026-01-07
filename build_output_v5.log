@@ -1,0 +1,24 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 34.3s
+  Running TypeScript ...
+Failed to compile.
+
+./src/app/app/dashboard/page.tsx:17:60
+Type error: Property 'organisationId' does not exist on type 'UserMembership'. Did you mean 'organizationId'?
+
+[0m [90m 15 |[39m         [36mif[39m ([33m![39misLoading [33m&&[39m user [33m&&[39m activeOrganization) {
+ [90m 16 |[39m             [90m// 0. Learner Redirection[39m
+[31m[1m>[22m[39m[90m 17 |[39m             [36mconst[39m isLearner [33m=[39m user[33m.[39mmemberships[33m.[39msome(m [33m=>[39m m[33m.[39morganisationId [33m===[39m activeOrganization[33m.[39mid [33m&&[39m m[33m.[39mrole[33m.[39mname [33m===[39m [32m'Apprenant'[39m)[33m;[39m [90m// Or check permission[39m
+ [90m    |[39m                                                            [31m[1m^[22m[39m
+ [90m 18 |[39m             [90m// simplified check: if NO permissions typical of staff?[39m
+ [90m 19 |[39m             [90m// Best to rely on a specific role check if available in store.[39m
+ [90m 20 |[39m             [90m// For now, let's assume if they have NO permissions, they might be learners? [39m[0m
+Next.js build worker exited with code: 1 and signal: null

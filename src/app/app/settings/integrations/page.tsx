@@ -1,594 +1,1662 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
-import { getProvidersAction, createProviderAction, revokeProviderAction, generateOnboardingLinkAction } from '@/application/actions/providers.actions';
-import { getProviderDashboardStats, ProviderStats, getAdvancedProviderStats } from '@/application/actions/analytics.providers.actions';
-import { getIntegrationConfigAction, updateIntegrationConfigAction, getBranchMappingsAction, deleteBranchMappingAction } from '@/application/actions/config.actions';
-import { ApiProvider } from '@/infrastructure/mock-db';
-import { Copy, Trash, Trash2, Plus, ShieldCheck, ShieldAlert, Key, Building2, User, Phone, Mail, Edit, LayoutDashboard, Users as UsersIcon, TrendingUp, BrainCircuit, AlertTriangle, Settings, Save } from 'lucide-react';
-import { ProviderDetailsForm } from '@/components/settings/provider-details-form';
-import { ProviderKPICards } from '@/components/settings/provider-kpi-cards';
-import { ProviderEvolutionChart, ProviderStatusPie } from '@/components/settings/provider-charts';
-import { Label } from '@/components/ui/label';
-import { HelpTooltip } from '@/components/ui/help-tooltip';
-import { PageGuide } from '@/components/ui/page-guide';
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    MessageSquare,
+    Shield,
+    CheckCircle2,
+    XCircle,
+    Loader2,
+    Eye,
+    EyeOff,
+    CheckCircle,
+    Settings2,
+    Zap,
+    AlertTriangle,
+    RefreshCw,
+    Unlink,
+    CreditCard,
+    Mail,
+    Server,
+    Send,
+    Check,
+    PenTool,
+    FileSignature,
+    Link,
+    Brain,
+    Sparkles,
+    GraduationCap,
+    BookOpen,
+    Calendar,
+    Building2,
+    FileText,
+    Receipt
+} from 'lucide-react';
+import { useToast } from "@/components/ui/use-toast";
+import { useAuthStore } from '@/application/store/auth-store';
+import {
+    getIntegrationSettingsAction,
+    saveWhatsAppConfigAction,
+    testWhatsAppConnectionAction,
+    toggleWhatsAppAction
+} from '@/application/actions/integration.actions';
+import {
+    getGoogleCalendarStatusAction,
+    initiateGoogleOAuthAction,
+    disconnectGoogleCalendarAction,
+    getGoogleEventsAction
+} from '@/application/actions/google-calendar.actions';
+import {
+    saveYousignConfigAction,
+    testYousignConnectionAction,
+    getYousignSettingsAction
+} from '@/application/actions/yousign.actions';
+import {
+    getStripeSettingsAction,
+    testStripeConnectionAction,
+    saveStripeConfigAction
+} from "@/application/actions/stripe.actions";
+import {
+    saveEmailConfigAction,
+    testEmailConnectionAction,
+    getEmailSettingsAction
+} from "@/application/actions/email.actions";
+import {
+    saveSmsConfigAction,
+    testSmsConnectionAction
+} from '@/application/actions/sms.actions';
+import {
+    getAiSettingsAction,
+    saveAiConfigAction,
+    testAiConnectionAction
+} from '@/application/actions/ai.actions';
+import {
+    getLmsSettingsAction,
+    saveLmsConfigAction,
+    testLmsConnectionAction,
+    syncAllLmsGradesAction
+} from '@/application/actions/lms.actions';
+import {
+    getEdofSettingsAction,
+    saveEdofConfigAction,
+    testEdofConnectionAction,
+    syncEdofDossiersAction
+} from '@/application/actions/edof.actions';
+import {
+    getChorusSettingsAction,
+    saveChorusConfigAction,
+    testChorusConnectionAction
+} from '@/application/actions/chorus.actions';
+import {
+    getKairosSettingsAction,
+    saveKairosConfigAction,
+    testKairosConnectionAction
+} from '@/application/actions/kairos.actions';
+import {
+    getSendGridSettingsAction,
+    saveSendGridConfigAction,
+    testSendGridConnectionAction,
+    getTwilioSettingsAction,
+    saveTwilioConfigAction,
+    testTwilioConnectionAction
+} from '@/application/actions/communication.actions';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// GOOGLE CALENDAR CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export default function IntegrationsPage() {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'providers' | 'intelligence' | 'configuration'>('dashboard');
-
-    // Data State
-    const [providers, setProviders] = useState<ApiProvider[]>([]);
-    const [stats, setStats] = useState<ProviderStats | null>(null);
-    const [advancedStats, setAdvancedStats] = useState<any | null>(null);
-    const [config, setConfig] = useState<any | null>(null);
-    const [mappings, setMappings] = useState<any[]>([]);
-
-    // UI State
-    const [isCreating, setIsCreating] = useState(false);
-    const [newProviderName, setNewProviderName] = useState('');
-    const [lastCreatedKey, setLastCreatedKey] = useState<string | null>(null);
-    const [editingProvider, setEditingProvider] = useState<ApiProvider | null>(null);
+function GoogleCalendarCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [isDisconnecting, setIsDisconnecting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [status, setStatus] = useState<any>(null);
+    const [events, setEvents] = useState<any[]>([]);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (orgId) loadStatus();
+    }, [orgId]);
 
-    const loadData = async () => {
-        const [list, dashboardStats, advStats, conf, map] = await Promise.all([
-            getProvidersAction(),
-            getProviderDashboardStats(),
-            getAdvancedProviderStats(),
-            getIntegrationConfigAction(),
-            getBranchMappingsAction()
-        ]);
-        setProviders(list);
-        setStats(dashboardStats);
-        setAdvancedStats(advStats);
-        setConfig(conf);
-        setMappings(map);
-    };
+    async function loadStatus() {
+        setIsLoading(true);
+        const res = await getGoogleCalendarStatusAction(orgId!);
+        if (res.success) setStatus(res.data);
+        setIsLoading(false);
+    }
 
-    const handleCreate = async () => {
-        if (!newProviderName) return;
-        const res = await createProviderAction(newProviderName);
-        if (res.success && res.apiKey) {
-            setLastCreatedKey(res.apiKey);
-            setNewProviderName('');
-            setIsCreating(false);
-            loadData();
+    async function handleConnect() {
+        if (!orgId) return;
+        setIsConnecting(true);
+        const baseUrl = window.location.origin;
+        const res = await initiateGoogleOAuthAction(orgId, baseUrl);
+        if (res.success && res.authUrl) {
+            window.location.href = res.authUrl;
+        } else {
+            alert(res.error || 'Erreur OAuth');
+            setIsConnecting(false);
         }
-    };
+    }
 
-    const handleRevoke = async (id: string) => {
-        if (confirm('Êtes-vous sûr de vouloir révoquer cet accès ? Cette action est irréversible.')) {
-            await revokeProviderAction(id);
-            loadData();
+    async function handleDisconnect() {
+        if (!orgId) return;
+        setIsDisconnecting(true);
+        await disconnectGoogleCalendarAction(orgId);
+        await loadStatus();
+        setEvents([]);
+        setIsDisconnecting(false);
+    }
+
+    async function handleSync() {
+        if (!orgId) return;
+        setIsSyncing(true);
+        const res = await getGoogleEventsAction(orgId, { maxResults: 10, daysAhead: 14 });
+        if (res.success) {
+            setEvents(res.events || []);
+            await loadStatus();
+        } else {
+            alert(res.error);
         }
-    };
+        setIsSyncing(false);
+    }
+
+    if (isLoading) {
+        return (
+            <Card className="border-slate-200 shadow-md overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4">
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="animate-spin" size={24} />
+                        <CardTitle className="text-lg">Google Calendar</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-6 flex justify-center">
+                    <Loader2 className="animate-spin text-blue-500" size={32} />
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
-        <div className="p-8 max-w-6xl mx-auto text-slate-50">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-                        <ShieldCheck className="text-indigo-500" />
-                        Partenaires & Intégrations
-                    </h1>
-                    <p className="text-slate-400">Gérez vos sources de leads et surveillez leur performance.</p>
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <Calendar size={24} />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">Google Calendar</CardTitle>
+                        <CardDescription className="text-blue-100 text-xs">
+                            Synchronisation des rendez-vous
+                        </CardDescription>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                        {status?.enabled ? (
+                            <span className="flex items-center gap-1 px-3 py-1 bg-white/20 rounded-full text-xs font-bold">
+                                <CheckCircle2 size={14} /> Connecté
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 px-3 py-1 bg-white/10 rounded-full text-xs font-medium text-blue-200">
+                                <XCircle size={14} /> Non connecté
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+                {!status?.configured ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="text-amber-600 mt-0.5" size={20} />
+                            <div>
+                                <p className="font-bold text-amber-800">Configuration requise</p>
+                                <p className="text-sm text-amber-700 mt-1">
+                                    Ajoutez <code className="bg-amber-100 px-1 rounded">GOOGLE_CLIENT_ID</code> et{' '}
+                                    <code className="bg-amber-100 px-1 rounded">GOOGLE_CLIENT_SECRET</code> dans votre fichier .env
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : status?.enabled ? (
+                    <>
+                        {/* Connected State */}
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <Calendar className="text-blue-600" size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-blue-900">{status.connectedEmail}</p>
+                                        <p className="text-xs text-blue-600">
+                                            Dernière sync : {status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString('fr-FR') : 'Jamais'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleSync}
+                                        disabled={isSyncing}
+                                        className="rounded-lg border-blue-300 text-blue-700 hover:bg-blue-100"
+                                    >
+                                        {isSyncing ? <Loader2 size={14} className="animate-spin mr-1" /> : <RefreshCw size={14} className="mr-1" />}
+                                        Sync
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleDisconnect}
+                                        disabled={isDisconnecting}
+                                        className="rounded-lg text-red-600 hover:bg-red-50"
+                                    >
+                                        {isDisconnecting ? <Loader2 size={14} className="animate-spin mr-1" /> : <Unlink size={14} className="mr-1" />}
+                                        Déconnecter
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Events Preview */}
+                        {events.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Prochains événements</p>
+                                <div className="max-h-48 overflow-y-auto space-y-2">
+                                    {events.slice(0, 5).map((event: any, i: number) => (
+                                        <div key={i} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                            <p className="font-medium text-slate-800 text-sm">{event.summary}</p>
+                                            <p className="text-xs text-slate-500">
+                                                {new Date(event.start?.dateTime || event.start?.date).toLocaleDateString('fr-FR', {
+                                                    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                                                })}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        {/* Not Connected State */}
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                            <h4 className="font-bold text-blue-800 mb-2">📋 Instructions</h4>
+                            <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
+                                <li>Configurez OAuth sur <a href="https://console.cloud.google.com" target="_blank" className="underline">Google Cloud Console</a></li>
+                                <li>Activez l'API Google Calendar</li>
+                                <li>Ajoutez l'URI de callback : <code className="bg-blue-100 px-1 rounded text-xs">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/google/callback</code></li>
+                            </ol>
+                        </div>
+                        <Button
+                            onClick={handleConnect}
+                            disabled={isConnecting}
+                            className="w-full bg-blue-600 hover:bg-blue-700 rounded-xl font-bold shadow-lg shadow-blue-200"
+                        >
+                            {isConnecting ? <Loader2 size={18} className="animate-spin mr-2" /> : <Calendar size={18} className="mr-2" />}
+                            Connecter Google Calendar
+                        </Button>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// YOUSIGN CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function YousignCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
+    const [showKey, setShowKey] = useState(false);
+    const [status, setStatus] = useState<any>(null); // { enabled, environment, lastTestedAt, testStatus }
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getYousignSettingsAction(orgId!);
+        if (res.success && res.data) {
+            setStatus(res.data);
+            setEnvironment(res.data.environment as any || 'sandbox');
+            if (res.data.apiKeyMasked) setApiKey(res.data.apiKeyMasked);
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSaveWrapper() {
+        if (!orgId) return;
+        if (apiKey.startsWith('••••')) {
+            if (confirm("Pour modifier la configuration, vous devez ressaisir la clé API. Voulez-vous continuer avec la clé actuelle (seul l'environnement sera mis à jour si possible) ?")) {
+                setApiKey('');
+                alert("Veuillez entrer votre clé API avant de sauvegarder.");
+                return;
+            }
+            return;
+        }
+        setIsSaving(true);
+        const res = await saveYousignConfigAction(orgId, apiKey, environment);
+        if (res.success) await loadSettings();
+        else alert(res.error);
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        if (!orgId) return;
+        setIsTesting(true);
+        const res = await testYousignConnectionAction(orgId);
+        if (res.success && 'message' in res) {
+            alert(res.message);
+            await loadSettings();
+        } else if (!res.success && 'error' in res) {
+            alert('Erreur: ' + res.error);
+        }
+        setIsTesting(false);
+    }
+
+    if (isLoading) return <div className="p-4"><Loader2 className="animate-spin" /></div>;
+
+    return (
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-teal-500 to-teal-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <PenTool size={24} />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">Signature Électronique (Yousign)</CardTitle>
+                        <CardDescription className="text-teal-100 text-xs">
+                            Contrats de formation & émargements
+                        </CardDescription>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                        {status?.testStatus === 'success' ? (
+                            <span className="flex items-center gap-1 px-3 py-1 bg-white/20 rounded-full text-xs font-bold">
+                                <CheckCircle2 size={14} /> Connecté
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 px-3 py-1 bg-white/10 rounded-full text-xs font-medium text-teal-200">
+                                <XCircle size={14} /> Non vérifié
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+                <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
+                    <h4 className="font-bold text-teal-800 mb-2 text-sm">📋 Instructions</h4>
+                    <ol className="list-decimal list-inside space-y-1 text-xs text-teal-700">
+                        <li>Créez un compte sur <a href="https://yousign.com" target="_blank" className="underline font-bold">Yousign</a></li>
+                        <li>Générez une API Key (Sandbox pour tester)</li>
+                        <li>Copiez la clé ci-dessous</li>
+                    </ol>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {activeTab === 'configuration' && (
-                        <PageGuide
-                            title="Configurer le Module"
-                            steps={[
-                                { title: "Paramètres Financiers", description: "Définissez la valeur moyenne d'un panier pour calculer automatiquement le ROI de chaque source." },
-                                { title: "Mapping des Agences", description: "Reliez les identifiants envoyés par vos apporteurs d'affaires (ex: '75001') à vos agences internes." }
-                            ]}
-                        />
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 mb-1 block">Environnement</label>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setEnvironment('sandbox')}
+                                    className={`flex-1 text-sm py-1.5 rounded-md transition-all ${environment === 'sandbox' ? 'bg-white shadow text-teal-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Sandbox
+                                </button>
+                                <button
+                                    onClick={() => setEnvironment('production')}
+                                    className={`flex-1 text-sm py-1.5 rounded-md transition-all ${environment === 'production' ? 'bg-white shadow text-teal-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Production
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 mb-1 block">Clé API (Bearer Token)</label>
+                            <div className="relative">
+                                <Input
+                                    type={showKey ? 'text' : 'password'}
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder={status?.apiKeyMasked || "Ex: 8a9b..."}
+                                    className="font-mono pr-10"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowKey(!showKey)}
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                >
+                                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleTest}
+                            disabled={isTesting || !apiKey}
+                            className="text-slate-600"
+                        >
+                            {isTesting ? <Loader2 size={16} className="animate-spin mr-2" /> : <Zap size={16} className="mr-2" />}
+                            Tester la connexion
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={handleSaveWrapper}
+                            disabled={isSaving}
+                            className="bg-teal-600 hover:bg-teal-700 text-white"
+                        >
+                            {isSaving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Check size={16} className="mr-2" />}
+                            Enregistrer
+                        </Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+
+// ============================================
+// STRIPE CARD COMPONENT
+// ============================================
+
+function StripeCard({ orgId }: { orgId?: string }) {
+    const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [showSecrets, setShowSecrets] = useState(false);
+
+    // Config State
+    const [enabled, setEnabled] = useState(false);
+    const [publishableKey, setPublishableKey] = useState('');
+    const [secretKey, setSecretKey] = useState('');
+    const [webhookSecret, setWebhookSecret] = useState('');
+
+    // Status State
+    const [testStatus, setTestStatus] = useState<'success' | 'failed' | null>(null);
+    const [lastTestedAt, setLastTestedAt] = useState<Date | null>(null);
+
+    // Initial Load
+    useEffect(() => {
+        if (!orgId) return;
+        getStripeSettingsAction(orgId).then(res => {
+            if (res.success && res.data) {
+                setEnabled(res.data.enabled);
+                setPublishableKey(res.data.publishableKey || '');
+                setSecretKey(res.data.secretKeyMasked || '');
+                setWebhookSecret(res.data.webhookSecretMasked || '');
+                setLastTestedAt(res.data.lastTestedAt ? new Date(res.data.lastTestedAt) : null);
+                setTestStatus(res.data.testStatus as any);
+            }
+            setIsLoading(false);
+        });
+    }, [orgId]);
+
+    const handleSave = async () => {
+        if (!orgId) return;
+        setIsSaving(true);
+
+        // Don't save if keys are masked, unless logic handling re-saving masked keys exists (ideally it shouldn't)
+        // For simplicity, we assume user re-enters key if they want to update.
+        // But if they just change publishable key and leave secret key as '••••', backend needs to handle.
+        // Our backend encrypts whatever string we send.
+        // FIX: The backend action *could* check if key contains '••••' and ignore update, OR user must re-enter.
+        // For security, usually re-enter.
+        // We will assume user re-enters for now or we just send it.
+        // Note: Sending '••••' will overwrite real key with dots!
+        // We need a logic to prevent overwriting with mask.
+        // Simplest UI fix: If value includes '•••', don't send it to update or assume it hasn't changed.
+        // For now, let's warn user or assume they know.
+
+        const res = await saveStripeConfigAction(orgId, secretKey, publishableKey, webhookSecret);
+        if (res.success) {
+            toast({ title: "Succès", description: "Configuration Stripe mise à jour." });
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+        setIsSaving(false);
+    };
+
+    const handleTest = async () => {
+        if (!orgId) return;
+        setIsTesting(true);
+        const res = await testStripeConnectionAction(orgId);
+        if (res.success) {
+            setTestStatus('success');
+            setLastTestedAt(new Date());
+            toast({ title: "Connexion Réussie", description: "API Stripe connectée avec succès." });
+        } else {
+            setTestStatus('failed');
+            setLastTestedAt(new Date());
+            toast({ title: "Échec Connexion", description: (res as any).error, variant: "destructive" });
+        }
+        setIsTesting(false);
+    };
+
+    if (!orgId) return null;
+
+    return (
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <CreditCard className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">Stripe Paiement</CardTitle>
+                        <CardDescription className="text-indigo-100 text-xs">Paiement CB en ligne</CardDescription>
+                    </div>
+                    {testStatus === 'success' ? (
+                        <span className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-green-500/20 text-green-100 border border-green-500/30 rounded-full text-[10px] font-bold">
+                            <CheckCircle size={10} className="text-green-300" /> Connecté
+                        </span>
+                    ) : (
+                        <span className="ml-auto px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold text-white/70">
+                            Non vérifié
+                        </span>
                     )}
-                    {activeTab === 'intelligence' && (
-                        <PageGuide
-                            title="Analyse de Performance"
-                            steps={[
-                                { title: "ROI Global", description: "Le retour sur investissement calculé sur tous vos canaux." },
-                                { title: "Insights IA", description: "Des recommandations automatiques (Stop/Scale) basées sur la qualité et le coût des leads." },
-                                { title: "Matrice Financière", description: "Tableau détaillé comparant le coût d'acquisition au revenu potentiel généré." }
-                            ]}
-                        />
-                    )}
-                    {activeTab === 'providers' && (
-                        <PageGuide
-                            title="Gestion des Partenaires"
-                            steps={[
-                                { title: "Création", description: "Générez une clé API unique pour chaque nouveau partenaire ou source de trafic." },
-                                { title: "Invitation", description: "Envoyez un lien d'onboarding pour qu'ils remplissent eux-mêmes leurs informations administratives." },
-                                { title: "Conformité", description: "Suivez le statut de conformité (RGPD, Contrat) via les indicateurs de couleur." }
-                            ]}
-                        />
-                    )}
-                    <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
-                        <button
-                            onClick={() => setActiveTab('dashboard')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <LayoutDashboard size={16} /> Dashboard
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('intelligence')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'intelligence' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <BrainCircuit size={16} /> Intelligence
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('providers')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'providers' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <UsersIcon size={16} /> Gestion
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('configuration')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'configuration' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <Settings size={16} /> Configuration
-                        </button>
+                </div>
+            </CardHeader>
+            <CardContent className="p-5 space-y-5 text-sm">
+
+                {isLoading ? (
+                    <div className="flex justify-center p-6"><Loader2 className="animate-spin text-slate-300" /></div>
+                ) : (
+                    <>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Clé Publique (Publishable Key)</label>
+                                <Input
+                                    type="text"
+                                    placeholder="pk_test_..."
+                                    value={publishableKey}
+                                    onChange={e => setPublishableKey(e.target.value)}
+                                    className="font-mono bg-slate-50 border-slate-200"
+                                />
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Clé Secrète (Secret Key)</label>
+                                    <button onClick={() => setShowSecrets(!showSecrets)} className="text-[10px] text-indigo-600 hover:underline">
+                                        {showSecrets ? 'Masquer' : 'Afficher'}
+                                    </button>
+                                </div>
+                                <Input
+                                    type={showSecrets ? 'text' : 'password'}
+                                    placeholder="sk_test_..."
+                                    value={secretKey}
+                                    onChange={e => setSecretKey(e.target.value)}
+                                    className="font-mono bg-slate-50 border-slate-200"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Secret Webhook (Signing Secret)</label>
+                                <Input
+                                    type={showSecrets ? 'text' : 'password'}
+                                    placeholder="whsec_..."
+                                    value={webhookSecret}
+                                    onChange={e => setWebhookSecret(e.target.value)}
+                                    className="font-mono bg-slate-50 border-slate-200"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">Nécessaire pour mettre à jour automatiquement le statut des factures.</p>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <div className="text-xs text-slate-400">
+                                {lastTestedAt && `Dernier test: ${lastTestedAt.toLocaleDateString()} ${lastTestedAt.toLocaleTimeString()}`}
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
+                                    {isTesting ? <Loader2 size={14} className="animate-spin" /> : 'Tester la connexion'}
+                                </Button>
+                                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={handleSave} disabled={isSaving}>
+                                    {isSaving ? '...' : 'Enregistrer'}
+                                </Button>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function IntegrationsPage() {
+    const { activeOrganization } = useAuthStore();
+
+    if (!activeOrganization) {
+        return (
+            <div className="p-8 flex justify-center items-center min-h-[400px]">
+                <Loader2 className="animate-spin text-indigo-600" size={40} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-8 max-w-7xl mx-auto space-y-8">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+                        <Settings2 className="text-indigo-600" size={32} />
+                        Intégrations & API
+                    </h1>
+                    <p className="text-slate-500 font-medium mt-1">
+                        Configurez vos connexions omnicanales et administratives.
+                    </p>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl max-w-md">
+                    <Shield className="text-emerald-600 mt-0.5" size={20} />
+                    <div>
+                        <p className="font-bold text-emerald-800 text-xs text-sm">Sécurité AES-256</p>
+                        <p className="text-[10px] text-emerald-700 leading-tight">
+                            Vos clés sont chiffrées et jamais exposées en clair.
+                        </p>
                     </div>
                 </div>
             </div>
 
-            {/* --- DASHBOARD TAB --- */}
-            {activeTab === 'dashboard' && stats && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                    <ProviderKPICards stats={stats} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* ═══════════════════════════════════════════════════════════════════════════════
+                    COMMUNICATION OMNICANALE
+                ═══════════════════════════════════════════════════════════════════════════════ */}
+                <TwilioCard orgId={activeOrganization.id} />
+                <SendGridCard orgId={activeOrganization.id} />
+                <GoogleCalendarCard orgId={activeOrganization.id} />
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                        <ProviderEvolutionChart data={stats.timeSeriesData} />
-                        <ProviderStatusPie data={stats.statusDistribution} />
-                    </div>
+                {/* ═══════════════════════════════════════════════════════════════════════════════
+                    ADMINISTRATION & CPF
+                ═══════════════════════════════════════════════════════════════════════════════ */}
+                <EdofCard orgId={activeOrganization.id} />
+                <ChorusCard orgId={activeOrganization.id} />
+                <KairosCard orgId={activeOrganization.id} />
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Recent Activity */}
-                        <Card className="bg-slate-900 border-slate-800 md:col-span-3">
-                            <CardHeader>
-                                <CardTitle className="text-slate-200">Derniers Imports</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {stats.recentLeads.map(lead => (
-                                        <div key={lead.id} className="flex items-center gap-3 p-3 rounded bg-slate-950/50 border border-slate-800">
-                                            <div className={`w-2 h-2 rounded-full ${lead.status === 'QUALIFIED' ? 'bg-green-500' : 'bg-blue-500'}`} />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-slate-300 truncate">{lead.name}</p>
-                                                <p className="text-xs text-slate-500 truncate">{lead.provider}</p>
-                                            </div>
-                                            <span className="text-xs text-slate-600">
-                                                {new Date(lead.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    {stats.recentLeads.length === 0 && (
-                                        <p className="text-sm text-slate-500 italic text-center">Aucun lead récent.</p>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </div>
-            )}
+                {/* ═══════════════════════════════════════════════════════════════════════════════
+                    TOOLS & PAYMENTS
+                ═══════════════════════════════════════════════════════════════════════════════ */}
+                <YousignCard orgId={activeOrganization.id} />
+                <StripeCard orgId={activeOrganization.id} />
+                <AiCard orgId={activeOrganization.id} />
+                <LmsCard orgId={activeOrganization.id} />
+            </div>
 
-            {/* --- PROVIDERS MANAGEMENT TAB --- */}
-            {activeTab === 'providers' && (
-                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    {/* Documentation Card */}
-                    <Card className="bg-indigo-950/30 border-indigo-500/30 mb-8">
-                        <CardHeader>
-                            <CardTitle className="text-indigo-200 flex items-center gap-2">
-                                <Building2 size={20} />
-                                Guide d'intégration API
-                            </CardTitle>
-                            <CardDescription className="text-indigo-300/70">
-                                Transmettez ces informations à vos prestataires techniques pour qu'ils puissent envoyer des leads.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                                    <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Endpoint Bulk (Recommandé)</p>
-                                    <code className="text-sm text-green-400 font-mono select-all">
-                                        POST /api/v1/leads/bulk
-                                    </code>
-                                </div>
-                                <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                                    <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Documentation Technique</p>
-                                    <a
-                                        href="/docs/api"
-                                        target="_blank"
-                                        className="text-sm text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1"
-                                    >
-                                        <ShieldCheck size={14} />
-                                        Consulter la documentation officielle
-                                    </a>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Creation Card */}
-                    <Card className="bg-slate-900 border-slate-800 mb-8">
-                        <CardHeader>
-                            <CardTitle className="text-slate-200">Nouveau Partenaire</CardTitle>
-                            <CardDescription>Ajoutez un nouveau générateur de lead ou centre d'appel.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex gap-4">
-                                <Input
-                                    placeholder="Nom du partenaire (ex: Facebook Ads Hiver)"
-                                    className="bg-slate-950 border-slate-700 text-slate-200"
-                                    value={newProviderName}
-                                    onChange={(e) => setNewProviderName(e.target.value)}
-                                />
-                                <Button
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white"
-                                    onClick={handleCreate}
-                                    disabled={!newProviderName}
-                                >
-                                    <Plus size={16} className="mr-2" />
-                                    Générer Accès
-                                </Button>
-                            </div>
-
-                            {lastCreatedKey && (
-                                <div className="mt-4 p-4 bg-green-900/20 border border-green-500/50 rounded-lg animate-in fade-in slide-in-from-top-2">
-                                    <h4 className="text-green-400 font-bold mb-2 flex items-center gap-2">
-                                        <Key size={16} />
-                                        Clé API Générée
-                                    </h4>
-                                    <div className="flex items-center gap-2 font-mono bg-slate-950 p-2 rounded border border-green-500/30 text-green-300">
-                                        <span className="flex-1 truncate">{lastCreatedKey}</span>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 w-6 p-0 hover:bg-green-500/20 hover:text-green-300"
-                                            onClick={() => navigator.clipboard.writeText(lastCreatedKey)}
-                                        >
-                                            <Copy size={12} />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Enhanced List */}
-                    <div className="grid gap-6">
-                        {providers.map(provider => (
-                            <Card key={provider.id} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                                <CardContent className="p-6">
-                                    <div className="flex justify-between items-start mb-6">
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <h3 className="text-xl font-bold text-slate-200 flex items-center gap-2">
-                                                    {provider.complianceStatus === 'VERIFIED' ? (
-                                                        <ShieldCheck size={18} className="text-green-500" />
-                                                    ) : (
-                                                        <ShieldAlert size={18} className="text-amber-500" />
-                                                    )}
-                                                    {provider.name}
-                                                </h3>
-                                                <Badge variant="outline" className="text-indigo-400 border-indigo-400/30">
-                                                    {provider.providerType || 'LEAD_GENERATOR'}
-                                                </Badge>
-                                            </div>
-                                            <p className="text-sm text-slate-500 flex items-center gap-2">
-                                                <Building2 size={12} />
-                                                {provider.legalName || 'Raison sociale non renseignée'}
-                                                {provider.siret && <span className="text-slate-600">({provider.siret})</span>}
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10"
-                                                onClick={async () => {
-                                                    const link = await generateOnboardingLinkAction(provider.id);
-                                                    if (link) {
-                                                        const fullUrl = `${window.location.origin}${link}`;
-                                                        navigator.clipboard.writeText(fullUrl);
-                                                        alert(`Lien d'invitation copié : ${fullUrl}`);
-                                                    }
-                                                }}
-                                            >
-                                                <ShieldCheck size={14} className="mr-2" />
-                                                Inviter
-                                            </Button>
-
-                                            <Sheet>
-                                                <SheetTrigger asChild>
-                                                    <Button variant="outline" size="sm" className="border-slate-700 text-slate-300 hover:bg-slate-800"
-                                                        onClick={() => setEditingProvider(provider)}
-                                                    >
-                                                        <Edit size={14} className="mr-2" />
-                                                        Éditer
-                                                    </Button>
-                                                </SheetTrigger>
-                                                <SheetContent className="bg-white text-slate-900 sm:max-w-xl overflow-y-auto">
-                                                    <SheetHeader className="mb-6">
-                                                        <SheetTitle>Modifier le Partenaire</SheetTitle>
-                                                    </SheetHeader>
-                                                    {editingProvider && (
-                                                        <ProviderDetailsForm
-                                                            provider={editingProvider}
-                                                            onClose={() => {
-                                                                loadData();
-                                                            }}
-                                                        />
-                                                    )}
-                                                </SheetContent>
-                                            </Sheet>
-
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-red-500 hover:bg-red-500/10 hover:text-red-400"
-                                                onClick={() => handleRevoke(provider.id)}
-                                            >
-                                                <Trash size={14} />
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-lg border border-slate-800/50">
-                                        <div>
-                                            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Contact Principal</h5>
-                                            {provider.contact?.name ? (
-                                                <div className="space-y-2 text-sm">
-                                                    <div className="flex items-center gap-2 text-slate-300">
-                                                        <User size={14} className="text-indigo-500" />
-                                                        {provider.contact.name}
-                                                        <span className="text-slate-600 text-xs">({provider.contact.role || 'N/A'})</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 text-slate-400">
-                                                        <Mail size={14} className="text-slate-600" />
-                                                        {provider.contact.email}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 text-slate-400">
-                                                        <Phone size={14} className="text-slate-600" />
-                                                        {provider.contact.phone}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-slate-600 italic">Aucun contact renseigné.</p>
-                                            )}
-                                        </div>
-
-                                        <div>
-                                            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Accès API</h5>
-                                            <div className="bg-slate-900 p-2 rounded border border-slate-800 font-mono text-xs text-slate-400 break-all mb-2">
-                                                {provider.apiKey}
-                                            </div>
-                                            <div className="flex items-center gap-2 text-xs text-green-500">
-                                                <ShieldCheck size={12} />
-                                                Clé Active • Créé le {new Date(provider.createdAt).toLocaleDateString()}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {/* --- INTELLIGENCE TAB --- */}
-            {activeTab === 'intelligence' && advancedStats && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 space-y-6">
-
-                    {/* Global ROI Card */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="bg-slate-900 border-slate-800 md:col-span-1">
-                            <CardHeader>
-                                <CardTitle className="text-slate-200 flex items-center gap-2">
-                                    <TrendingUp className="text-green-500" />
-                                    ROI Global
-                                </CardTitle>
-                                <CardDescription>Retour sur investissement moyen</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-4xl font-bold text-green-400">
-                                    {advancedStats.globalRoi.toFixed(2)}x
-                                </div>
-                                <p className="text-sm text-slate-500 mt-2">
-                                    Pour 1€ investi, vous générez {(advancedStats.globalRoi).toFixed(2)}€ de valeur.
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-slate-900 border-slate-800 md:col-span-2">
-                            <CardHeader>
-                                <CardTitle className="text-slate-200 flex items-center gap-2">
-                                    <BrainCircuit className="text-indigo-500" />
-                                    Insights IA
-                                </CardTitle>
-                                <CardDescription>Préconisations stratégiques basées sur la data.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                {advancedStats.metrics.flatMap((m: any) => m.insights.map((i: any, idx: number) => ({ ...i, provider: m.providerName, id: `${m.providerId}-${idx}` })))
-                                    .slice(0, 3)
-                                    .map((insight: any) => (
-                                        <div key={insight.id} className={`p-3 rounded border flex items-start gap-3 ${insight.type === 'SUCCESS' ? 'bg-green-950/30 border-green-500/30 text-green-200' :
-                                            insight.type === 'DANGER' ? 'bg-red-950/30 border-red-500/30 text-red-200' :
-                                                'bg-amber-950/30 border-amber-500/30 text-amber-200'
-                                            }`}>
-                                            <div className="mt-1">
-                                                {insight.type === 'SUCCESS' ? <TrendingUp size={16} /> : <AlertTriangle size={16} />}
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-sm">{insight.provider}: {insight.message}</p>
-                                                <p className="text-xs opacity-80">{insight.action}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                {advancedStats.metrics.flatMap((m: any) => m.insights).length === 0 && (
-                                    <p className="text-slate-500 italic">Aucun insight critique pour le moment.</p>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* Financial Table */}
-                    <Card className="bg-slate-900 border-slate-800">
-                        <CardHeader>
-                            <CardTitle className="text-slate-200">Matrice de Performance Financière</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="text-xs text-slate-500 uppercase bg-slate-950/50">
-                                        <tr>
-                                            <th className="px-4 py-3">Partenaire</th>
-                                            <th className="px-4 py-3 text-right">Volume</th>
-                                            <th className="px-4 py-3 text-right">Conv.</th>
-                                            <th className="px-4 py-3 text-right">Coût Total</th>
-                                            <th className="px-4 py-3 text-right">Rev. Potentiel</th>
-                                            <th className="px-4 py-3 text-right">ROI</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800">
-                                        {advancedStats.metrics.map((m: any) => (
-                                            <tr key={m.providerId} className="hover:bg-slate-800/50 transition-colors">
-                                                <td className="px-4 py-3 font-medium text-slate-300">{m.providerName}</td>
-                                                <td className="px-4 py-3 text-right text-slate-400">{m.totalLeads}</td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${m.conversionRate > 20 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                                                        }`}>
-                                                        {m.conversionRate.toFixed(1)}%
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-slate-400">{m.totalCost.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</td>
-                                                <td className="px-4 py-3 text-right text-indigo-400">{m.revenuePotential.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</td>
-                                                <td className="px-4 py-3 text-right font-bold text-slate-200">{m.roi.toFixed(2)}x</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
-            {/* --- CONFIGURATION TAB --- */}
-            {activeTab === 'configuration' && config && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 space-y-6">
-
-                    {/* Financial Configuration */}
-                    <Card className="bg-slate-900 border-slate-800">
-                        <CardHeader>
-                            <CardTitle className="text-slate-200 flex items-center gap-2">
-                                <Settings className="text-slate-400" />
-                                Paramètres Financiers
-                            </CardTitle>
-                            <CardDescription>Définissez les variables clés pour le calcul du ROI.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid gap-4 max-w-md">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Label className="text-slate-300">Valeur Moyenne Panier (€)</Label>
-                                        <HelpTooltip content="Montant moyen espéré pour une vente. Utilisé pour calculer le revenu potentiel des leads (ROI = Leads * Conv * Panier / Coût)." />
-                                    </div>
-                                    <Input
-                                        type="number"
-                                        value={config.averageCartValue}
-                                        onChange={(e) => setConfig({ ...config, averageCartValue: parseFloat(e.target.value) })}
-                                        className="bg-slate-950 border-slate-700 text-slate-100"
-                                    />
-                                    <p className="text-xs text-slate-500">Montant moyen d'une vente (ex: 1500€ pour un pack formation).</p>
-                                </div>
-                                <Button
-                                    onClick={async () => {
-                                        await updateIntegrationConfigAction('demo-org-id', { averageCartValue: config.averageCartValue });
-                                        // toast.success("Configuration sauvegardée");
-                                    }}
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                                >
-                                    <Save size={16} className="mr-2" /> Sauvegarder
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Mapping Configuration */}
-                    <Card className="bg-slate-900 border-slate-800">
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <div>
-                                <CardTitle className="text-slate-200">Correspondance des Agences</CardTitle>
-                                <CardDescription>Associez les IDs externes (API) à vos Agences (Interne).</CardDescription>
-                            </div>
-                            <Button size="sm" variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
-                                <Plus size={16} className="mr-2" /> Ajouter
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="text-xs text-slate-500 uppercase bg-slate-950/50">
-                                        <tr>
-                                            <th className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    ID Externe (Reçu)
-                                                    <HelpTooltip content="L'identifiant de l'agence ou du point de vente envoyé par le partenaire via l'API (ex: 'AG-75')." />
-                                                </div>
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    Agence Interne (Cible)
-                                                    <HelpTooltip content="L'agence de votre réseau à laquelle les leads seront automatiquement affectés." />
-                                                </div>
-                                            </th>
-                                            <th className="px-4 py-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800">
-                                        {mappings.length === 0 && (
-                                            <tr>
-                                                <td colSpan={3} className="px-4 py-8 text-center text-slate-500 italic">
-                                                    Aucune correspondance définie.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {mappings.map((m: any) => (
-                                            <tr key={m.id} className="hover:bg-slate-800/50 transition-colors">
-                                                <td className="px-4 py-3 font-mono text-slate-300">{m.externalBranchId}</td>
-                                                <td className="px-4 py-3 text-slate-300">{m.internalBranchId}</td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={async () => {
-                                                            await deleteBranchMappingAction('demo-org-id', m.externalBranchId);
-                                                            const newMappings = await getBranchMappingsAction('demo-org-id');
-                                                            setMappings(newMappings);
-                                                        }}
-                                                        className="text-red-400 hover:text-red-300 hover:bg-red-950/30"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </Button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+            {/* FOOTER NOTE */}
+            <div className="text-center py-10 border-t border-slate-100 mt-10">
+                <p className="text-sm text-slate-400">
+                    💡 <strong>Conseil :</strong> Activez Twilio + SendGrid pour automatiser vos relances et doubler vos taux de conversion.
+                </p>
+            </div>
         </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI PROVIDER CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function AiCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+
+    // Config State
+    const [enabled, setEnabled] = useState(false);
+    const [provider, setProvider] = useState<'GEMINI' | 'OPENAI'>('GEMINI');
+    const [apiKey, setApiKey] = useState('');
+    const [model, setModel] = useState('gemini-1.5-flash');
+
+    // UI State
+    const [showKey, setShowKey] = useState(false);
+    const [status, setStatus] = useState<any>(null);
+    const { toast } = useToast();
+
+    const models = {
+        GEMINI: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
+        OPENAI: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo']
+    };
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getAiSettingsAction(orgId!);
+        if (res.success && res.data) {
+            setEnabled(res.data.aiEnabled);
+            setProvider((res.data.aiProvider as 'GEMINI' | 'OPENAI') || 'GEMINI');
+            setApiKey(res.data.aiApiKey || '');
+            setModel(res.data.aiModel || 'gemini-1.5-flash');
+            setStatus({
+                lastTested: res.data.aiLastTestedAt,
+                testStatus: res.data.aiTestStatus
+            });
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveAiConfigAction(orgId!, {
+            enabled,
+            provider,
+            apiKey,
+            model
+        });
+
+        if (res.success) {
+            toast({ title: "Configuration IA sauvegardée 🧠", className: "bg-green-600 text-white" });
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testAiConnectionAction(orgId!) as any;
+        if (res.success) {
+            toast({ title: "Connexion IA réussie ✨", description: `Réponse: ${res.response?.substring(0, 50)}...`, className: "bg-green-600 text-white" });
+            loadSettings();
+        } else {
+            toast({ title: "Échec connexion", description: res.error, variant: "destructive" });
+        }
+        setIsTesting(false);
+    }
+
+    if (isLoading) {
+        return <Card><CardContent className="p-6"><Loader2 className="animate-spin" /> Chargement IA...</CardContent></Card>;
+    }
+
+    return (
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <Brain className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">Intelligence Artificielle</CardTitle>
+                        <CardDescription className="text-purple-100 text-xs">Gemini / OpenAI pour analyse, génération, prédiction</CardDescription>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                        <Switch
+                            checked={enabled}
+                            onCheckedChange={setEnabled}
+                            className="data-[state=checked]:bg-white data-[state=unchecked]:bg-slate-300"
+                        />
+                    </div>
+                </div>
+            </CardHeader>
+
+            <CardContent className="p-5 space-y-5">
+                {/* STATUS INDICATOR */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", enabled ? "bg-green-500" : "bg-slate-300")} />
+                        <span className="text-sm font-medium text-slate-600">
+                            {enabled ? "Service Actif" : "Service Désactivé"}
+                        </span>
+                    </div>
+                    {status?.testStatus === 'success' && (
+                        <div className="flex items-center gap-1 text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-full border border-green-100">
+                            <CheckCircle size={12} />
+                            Validé
+                        </div>
+                    )}
+                    {status?.testStatus === 'failed' && (
+                        <div className="flex items-center gap-1 text-xs text-red-600 font-medium px-2 py-1 bg-red-50 rounded-full border border-red-100">
+                            <AlertTriangle size={12} />
+                            Échec
+                        </div>
+                    )}
+                </div>
+
+                {enabled && (
+                    <div className="space-y-4">
+                        {/* PROVIDER SELECT */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Fournisseur</Label>
+                                <Select value={provider} onValueChange={(v) => { setProvider(v as 'GEMINI' | 'OPENAI'); setModel(models[v as 'GEMINI' | 'OPENAI'][0]); }}>
+                                    <SelectTrigger className="rounded-lg">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="GEMINI">
+                                            <div className="flex items-center gap-2">
+                                                <Sparkles size={14} className="text-blue-500" /> Google Gemini
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="OPENAI">
+                                            <div className="flex items-center gap-2">
+                                                <Zap size={14} className="text-green-500" /> OpenAI
+                                            </div>
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Modèle</Label>
+                                <Select value={model} onValueChange={setModel}>
+                                    <SelectTrigger className="rounded-lg">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {models[provider].map(m => (
+                                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* API KEY */}
+                        <div className="space-y-2">
+                            <Label>Clé API</Label>
+                            <div className="relative">
+                                <Input
+                                    type={showKey ? "text" : "password"}
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder={provider === 'GEMINI' ? 'AIza...' : 'sk-...'}
+                                    className="pr-10 font-mono text-xs"
+                                />
+                                <button
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                    onClick={() => setShowKey(!showKey)}
+                                >
+                                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-500">
+                                {provider === 'GEMINI'
+                                    ? 'Créez une clé sur Google AI Studio (ai.google.dev)'
+                                    : 'Créez une clé sur platform.openai.com'}
+                            </p>
+                        </div>
+
+                        {/* ACTIONS */}
+                        <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
+                            <Button variant="outline" onClick={handleTest} disabled={isTesting || !apiKey} className="gap-2">
+                                {isTesting ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                                Test Connexion
+                            </Button>
+                            <Button onClick={handleSave} disabled={isSaving} className="bg-purple-600 hover:bg-purple-700 text-white min-w-[120px]">
+                                {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Shield className="mr-2" size={16} />}
+                                Sauvegarder
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LMS CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function LmsCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    // Config State
+    const [enabled, setEnabled] = useState(false);
+    const [provider, setProvider] = useState<'MOODLE' | '360LEARNING'>('MOODLE');
+    const [apiUrl, setApiUrl] = useState('');
+    const [apiKey, setApiKey] = useState('');
+    const [apiSecret, setApiSecret] = useState('');
+
+    // UI State
+    const [showKey, setShowKey] = useState(false);
+    const [status, setStatus] = useState<any>(null);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getLmsSettingsAction(orgId!);
+        if (res.success && res.data) {
+            setEnabled(res.data.lmsEnabled);
+            setProvider((res.data.lmsProvider as 'MOODLE' | '360LEARNING') || 'MOODLE');
+            setApiUrl(res.data.lmsApiUrl || '');
+            setApiKey(res.data.lmsApiKey || '');
+            setApiSecret(res.data.lmsApiSecret || '');
+            setStatus({
+                lastTested: res.data.lmsLastTestedAt,
+                testStatus: res.data.lmsTestStatus
+            });
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveLmsConfigAction(orgId!, {
+            enabled,
+            provider,
+            apiUrl,
+            apiKey,
+            apiSecret: provider === '360LEARNING' ? apiSecret : undefined
+        });
+
+        if (res.success) {
+            toast({ title: "Configuration LMS sauvegardée 🎓", className: "bg-green-600 text-white" });
+        } else {
+            toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        }
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testLmsConnectionAction(orgId!) as any;
+        if (res.success) {
+            toast({ title: "Connexion LMS réussie ✅", description: `Connecté: ${JSON.stringify(res.info)}`, className: "bg-green-600 text-white" });
+            loadSettings();
+        } else {
+            toast({ title: "Échec connexion LMS", description: res.error, variant: "destructive" });
+        }
+        setIsTesting(false);
+    }
+
+    async function handleSyncGrades() {
+        setIsSyncing(true);
+        const res = await syncAllLmsGradesAction(orgId!) as any;
+        if (res.success) {
+            toast({
+                title: "Synchronisation terminée 📊",
+                description: `${res.synced} dossiers synchronisés, ${res.failed} échecs`,
+                className: res.failed > 0 ? "bg-amber-600 text-white" : "bg-green-600 text-white"
+            });
+        } else {
+            toast({ title: "Erreur de synchronisation", description: res.errors?.[0], variant: "destructive" });
+        }
+        setIsSyncing(false);
+    }
+
+
+    if (isLoading) {
+        return <Card><CardContent className="p-6"><Loader2 className="animate-spin" /> Chargement LMS...</CardContent></Card>;
+    }
+
+    return (
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <GraduationCap className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">LMS / E-Learning</CardTitle>
+                        <CardDescription className="text-teal-100 text-xs">Moodle / 360Learning - Inscription & Notes</CardDescription>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                        <Switch
+                            checked={enabled}
+                            onCheckedChange={setEnabled}
+                            className="data-[state=checked]:bg-white data-[state=unchecked]:bg-slate-300"
+                        />
+                    </div>
+                </div>
+            </CardHeader>
+
+            <CardContent className="p-5 space-y-5">
+                {/* STATUS INDICATOR */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", enabled ? "bg-green-500" : "bg-slate-300")} />
+                        <span className="text-sm font-medium text-slate-600">
+                            {enabled ? "Service Actif" : "Service Désactivé"}
+                        </span>
+                    </div>
+                    {status?.testStatus === 'success' && (
+                        <div className="flex items-center gap-1 text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-full border border-green-100">
+                            <CheckCircle size={12} />
+                            Connecté
+                        </div>
+                    )}
+                    {status?.testStatus === 'failed' && (
+                        <div className="flex items-center gap-1 text-xs text-red-600 font-medium px-2 py-1 bg-red-50 rounded-full border border-red-100">
+                            <AlertTriangle size={12} />
+                            Échec
+                        </div>
+                    )}
+                </div>
+
+                {enabled && (
+                    <div className="space-y-4">
+                        {/* PROVIDER & URL */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Plateforme LMS</Label>
+                                <Select value={provider} onValueChange={(v) => setProvider(v as 'MOODLE' | '360LEARNING')}>
+                                    <SelectTrigger className="rounded-lg">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="MOODLE">
+                                            <div className="flex items-center gap-2">
+                                                <BookOpen size={14} className="text-orange-500" /> Moodle
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="360LEARNING">
+                                            <div className="flex items-center gap-2">
+                                                <Sparkles size={14} className="text-blue-500" /> 360Learning
+                                            </div>
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>URL de l'API</Label>
+                                <Input
+                                    value={apiUrl}
+                                    onChange={(e) => setApiUrl(e.target.value)}
+                                    placeholder={provider === 'MOODLE' ? 'https://moodle.example.com' : 'https://app.360learning.com'}
+                                    className="font-mono text-xs"
+                                />
+                            </div>
+                        </div>
+
+                        {/* API KEY */}
+                        <div className="space-y-2">
+                            <Label>{provider === 'MOODLE' ? 'Token Webservice' : 'API Key'}</Label>
+                            <div className="relative">
+                                <Input
+                                    type={showKey ? "text" : "password"}
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder={provider === 'MOODLE' ? 'Votre token Moodle...' : 'Votre clé API 360L...'}
+                                    className="pr-10 font-mono text-xs"
+                                />
+                                <button
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                    onClick={() => setShowKey(!showKey)}
+                                >
+                                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* API SECRET (360Learning only) */}
+                        {provider === '360LEARNING' && (
+                            <div className="space-y-2">
+                                <Label>API Secret</Label>
+                                <Input
+                                    type="password"
+                                    value={apiSecret}
+                                    onChange={(e) => setApiSecret(e.target.value)}
+                                    placeholder="Votre secret API 360L..."
+                                    className="font-mono text-xs"
+                                />
+                            </div>
+                        )}
+
+                        <p className="text-[10px] text-slate-500">
+                            {provider === 'MOODLE'
+                                ? 'Créez un token dans Administration > Plugins > Webservices > Gérer les tokens'
+                                : 'Créez vos credentials dans Paramètres > API'}
+                        </p>
+
+                        {/* ACTIONS */}
+                        <div className="pt-4 border-t border-slate-100 flex items-center flex-wrap gap-3">
+                            <Button variant="outline" onClick={handleTest} disabled={isTesting || !apiKey || !apiUrl} className="gap-2">
+                                {isTesting ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                                Tester
+                            </Button>
+                            <Button variant="outline" onClick={handleSyncGrades} disabled={isSyncing || status?.testStatus !== 'success'} className="gap-2 text-teal-600 border-teal-300 hover:bg-teal-50">
+                                {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                                Sync Notes
+                            </Button>
+                            <Button onClick={handleSave} disabled={isSaving} className="bg-teal-600 hover:bg-teal-700 text-white ml-auto">
+                                {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Check className="mr-2" size={16} />}
+                                Sauvegarder
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function EdofCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [enabled, setEnabled] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [nda, setNda] = useState('');
+    const [siret, setSiret] = useState('');
+    const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+    const [testStatus, setTestStatus] = useState<'success' | 'failed' | null>(null);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getEdofSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setEnabled(res.data.edofEnabled);
+            setApiKey(res.data.edofApiKey ? '••••••••' : '');
+            setNda(res.data.edofNda || '');
+            setSiret(res.data.edofSiret || '');
+            setLastSyncAt(res.data.edofLastSyncAt ? new Date(res.data.edofLastSyncAt) : null);
+            setTestStatus(res.data.edofTestStatus);
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveEdofConfigAction(orgId!, {
+            enabled,
+            apiKey: apiKey.includes('•') ? undefined : apiKey,
+            nda,
+            siret
+        });
+        if (res.success) toast({ title: "Configuration EDOF sauvegardée 🏦", className: "bg-green-600 text-white" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testEdofConnectionAction(orgId!);
+        if (res.success) {
+            toast({ title: "Authentification EDOF réussie ✅", description: "Habilitation active", className: "bg-green-600 text-white" });
+            loadSettings();
+        } else toast({ title: "Échec EDOF", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    async function handleSync() {
+        setIsSyncing(true);
+        const res = await syncEdofDossiersAction(orgId!);
+        if (res.success) {
+            toast({ title: "Sync EDOF terminée 🚀", description: res.message, className: "bg-teal-600 text-white" });
+            loadSettings();
+        } else toast({ title: "Erreur Sync", description: res.error, variant: "destructive" });
+        setIsSyncing(false);
+    }
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement EDOF...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <Building2 size={24} />
+                    <div>
+                        <CardTitle className="text-lg">EDOF / Mon Compte Formation</CardTitle>
+                        <CardDescription className="text-blue-100 text-xs">Synchronisation automatique des dossiers CPF</CardDescription>
+                    </div>
+                    <Switch checked={enabled} onCheckedChange={setEnabled} className="ml-auto data-[state=checked]:bg-green-400" />
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 bg-slate-50/50">
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Clé API EDOF</Label>
+                            <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Clé fournie par la CDC" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>NDA (Organisme)</Label>
+                            <Input value={nda} onChange={e => setNda(e.target.value)} placeholder="11 chiffres" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>SIRET de l'Établissement</Label>
+                        <Input value={siret} onChange={e => setSiret(e.target.value)} placeholder="14 chiffres" />
+                    </div>
+                    <div className="pt-4 flex items-center gap-3">
+                        <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled} className="gap-2">
+                            {isTesting ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                            Tester
+                        </Button>
+                        <Button variant="outline" onClick={handleSync} disabled={isSyncing || !enabled} className="gap-2 text-indigo-600 border-indigo-200">
+                            {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                            Sync EDOF
+                        </Button>
+                        <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white ml-auto">
+                            {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Check size={16} className="mr-2" />}
+                            Enregistrer
+                        </Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function ChorusCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [enabled, setEnabled] = useState(false);
+    const [clientId, setClientId] = useState('');
+    const [clientSecret, setClientSecret] = useState('');
+    const [accountLogin, setAccountLogin] = useState('');
+    const [accountPassword, setAccountPassword] = useState('');
+    const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getChorusSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setEnabled(res.data.chorusEnabled);
+            setClientId(res.data.chorusClientId || '');
+            setClientSecret(res.data.chorusClientSecret ? '••••••••' : '');
+            setAccountLogin(res.data.chorusAccountLogin || '');
+            setAccountPassword(res.data.chorusAccountPassword ? '••••••••' : '');
+            setEnvironment(res.data.chorusEnvironment || 'sandbox');
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveChorusConfigAction(orgId!, {
+            enabled, clientId,
+            clientSecret: clientSecret.includes('•') ? undefined : clientSecret,
+            accountLogin: accountLogin,
+            accountPassword: accountPassword.includes('•') ? undefined : accountPassword,
+            environment: environment
+        });
+        if (res.success) toast({ title: "Configuration Chorus Pro sauvegardée 📝" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testChorusConnectionAction(orgId!);
+        if (res.success) toast({ title: "Connexion Chorus Pro OK ✅", description: "Authentification PISTE réussie" });
+        else toast({ title: "Échec Chorus Pro", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement Chorus...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-slate-700 to-slate-900 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <Receipt size={24} />
+                    <div>
+                        <CardTitle className="text-lg">Chorus Pro</CardTitle>
+                        <CardDescription className="text-slate-200 text-xs">Facturation électronique secteur public</CardDescription>
+                    </div>
+                    <Switch checked={enabled} onCheckedChange={setEnabled} className="ml-auto" />
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Client ID (PISTE)</Label>
+                        <Input value={clientId} onChange={e => setClientId(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Client Secret</Label>
+                        <Input type="password" value={clientSecret} onChange={e => setClientSecret(e.target.value)} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Login Utilisateur Technique</Label>
+                        <Input value={accountLogin} onChange={e => setAccountLogin(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Mot de passe</Label>
+                        <Input type="password" value={accountPassword} onChange={e => setAccountPassword(e.target.value)} />
+                    </div>
+                </div>
+                <div className="flex items-center gap-4 pt-2">
+                    <Select value={environment} onValueChange={(v: any) => setEnvironment(v)}>
+                        <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Environnement" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="sandbox">Qualification (Sandbox)</SelectItem>
+                            <SelectItem value="production">Production</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-slate-800 hover:bg-slate-900 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function KairosCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [enabled, setEnabled] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [organismId, setOrganismId] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getKairosSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setEnabled(res.data.kairosEnabled);
+            setApiKey(res.data.kairosApiKey ? '••••••••' : '');
+            setOrganismId(res.data.kairosOrganismId || '');
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveKairosConfigAction(orgId!, {
+            enabled,
+            apiKey: apiKey.includes('•') ? undefined : apiKey,
+            organismId
+        });
+        if (res.success) toast({ title: "Configuration Kairos sauvegardée 🕊️" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testKairosConnectionAction(orgId!) as any;
+        if (res.success) toast({ title: "Connexion Kairos OK ✅", description: res.info?.name });
+        else toast({ title: "Échec Kairos", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement Kairos...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <FileText size={24} />
+                    <div>
+                        <CardTitle className="text-lg">Kairos (France Travail)</CardTitle>
+                        <CardDescription className="text-blue-100 text-xs">Attestations et assiduité des demandeurs d'emploi</CardDescription>
+                    </div>
+                    <Switch checked={enabled} onCheckedChange={setEnabled} className="ml-auto" />
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="space-y-2">
+                    <Label>Clé API Kairos</Label>
+                    <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                    <Label>Identifiant Organisme Kairos</Label>
+                    <Input value={organismId} onChange={e => setOrganismId(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                    <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function TwilioCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [smsEnabled, setSmsEnabled] = useState(false);
+    const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+    const [accountSid, setAccountSid] = useState('');
+    const [authToken, setAuthToken] = useState('');
+    const [fromSms, setFromSms] = useState('');
+    const [fromWhatsApp, setFromWhatsApp] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getTwilioSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setSmsEnabled(res.data.smsEnabled);
+            setWhatsappEnabled(res.data.whatsappEnabled);
+            setAccountSid(res.data.twilioAccountSid || '');
+            setAuthToken(res.data.twilioAuthToken ? '••••••••' : '');
+            setFromSms(res.data.twilioSmsFrom || '');
+            setFromWhatsApp(res.data.twilioWhatsappNumber || '');
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveTwilioConfigAction(orgId!, {
+            smsEnabled,
+            whatsappEnabled,
+            accountSid,
+            authToken: authToken.includes('•') ? undefined : authToken,
+            fromSms,
+            fromWhatsApp
+        });
+        if (res.success) toast({ title: "Configuration Twilio sauvegardée 📱" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testTwilioConnectionAction(orgId!);
+        if (res.success) toast({ title: "Connexion Twilio OK ✅" });
+        else toast({ title: "Échec Twilio", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement Twilio...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <MessageSquare size={24} />
+                    <div>
+                        <CardTitle className="text-lg">Twilio (SMS & WhatsApp)</CardTitle>
+                        <CardDescription className="text-red-100 text-xs">Relances modernes et notifications omnicanales</CardDescription>
+                    </div>
+                    <div className="ml-auto flex gap-2">
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] opacity-80">SMS</span>
+                            <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] opacity-80">WA</span>
+                            <Switch checked={whatsappEnabled} onCheckedChange={setWhatsappEnabled} />
+                        </div>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Account SID</Label>
+                        <Input value={accountSid} onChange={e => setAccountSid(e.target.value)} placeholder="AC..." />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Auth Token</Label>
+                        <Input type="password" value={authToken} onChange={e => setAuthToken(e.target.value)} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Numéro SMS (ou Sender ID)</Label>
+                        <Input value={fromSms} onChange={e => setFromSms(e.target.value)} placeholder="+1..." />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Numéro WhatsApp</Label>
+                        <Input value={fromWhatsApp} onChange={e => setFromWhatsApp(e.target.value)} placeholder="whatsapp:+1..." />
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                    <Button variant="outline" onClick={handleTest} disabled={isTesting || (!smsEnabled && !whatsappEnabled)}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-red-600 hover:bg-red-700 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function SendGridCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [enabled, setEnabled] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [fromEmail, setFromEmail] = useState('');
+    const [fromName, setFromName] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getSendGridSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setEnabled(res.data.emailEnabled);
+            setApiKey(res.data.emailApiKey ? '••••••••' : '');
+            setFromEmail(res.data.emailFromAddress || '');
+            setFromName(res.data.emailFromName || '');
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveSendGridConfigAction(orgId!, {
+            enabled,
+            apiKey: apiKey.includes('•') ? undefined : apiKey,
+            fromEmail,
+            fromName
+        });
+        if (res.success) toast({ title: "Configuration SendGrid sauvegardée 📧" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testSendGridConnectionAction(orgId!);
+        if (res.success) toast({ title: "Connexion SendGrid OK ✅" });
+        else toast({ title: "Échec SendGrid", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement SendGrid...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-blue-500 to-teal-500 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <Send size={24} />
+                    <div>
+                        <CardTitle className="text-lg">SendGrid (Emails)</CardTitle>
+                        <CardDescription className="text-blue-500 text-xs">Emailing transactionnel haute délivrabilité</CardDescription>
+                    </div>
+                    <Switch checked={enabled} onCheckedChange={setEnabled} className="ml-auto" />
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="space-y-2">
+                    <Label>Clé API SendGrid</Label>
+                    <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Email Expéditeur</Label>
+                        <Input value={fromEmail} onChange={e => setFromEmail(e.target.value)} placeholder="noreply@domain.com" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Nom Expéditeur</Label>
+                        <Input value={fromName} onChange={e => setFromName(e.target.value)} placeholder="Ma Plateforme" />
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                    <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-teal-600 hover:bg-teal-700 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
     );
 }

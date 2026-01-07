@@ -5,24 +5,14 @@ import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 
-/**
- * Simulate email sending - In a real app, integrate with Resend, Postmark, etc.
- */
-async function sendMockEmail(email: string, link: string) {
-    console.log('--- 📧 MOCK EMAIL SENT ---');
-    console.log(`To: ${email}`);
-    console.log(`Subject: Invitation à rejoindre une organisation sur Polyx`);
-    console.log(`Link: ${link}`);
-    console.log('---------------------------');
-}
+import { EmailService } from '@/application/services/email.service';
 
 /**
  * Invite a user to an organization.
- * Generates an invitation record and simulates an email.
+ * Generates an invitation record and sends an email via configured provider.
  */
 export async function inviteUserToOrg(orgId: string, email: string, roleId: string) {
     // 1. Mock permission check
-    // In a real scenario, we'd check if the current user has 'USER_INVITE' permission
     console.log(`[AUTH] Verifying 'USER_INVITE' permission for organisation: ${orgId}`);
 
     // 2. Generate a secure unique token
@@ -43,15 +33,31 @@ export async function inviteUserToOrg(orgId: string, email: string, roleId: stri
             }
         });
 
-        // 4. Simulate sending the email
+        // 4. Send Email via Service
         const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:5555';
         const inviteLink = `${appUrl}/invite/accept?token=${token}`;
-        await sendMockEmail(email, inviteLink);
+
+        // Fetch Org Name for email context
+        const org = await prisma.organisation.findUnique({ where: { id: orgId } });
+
+        await EmailService.send(orgId, {
+            to: email,
+            subject: `Invitation à rejoindre ${org?.name || 'une organisation'} sur Polyx`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px;">
+                    <h2>Bonjour,</h2>
+                    <p>Vous avez été invité à rejoindre l'organisation <strong>${org?.name}</strong> sur Polyx.</p>
+                    <p>Cliquez sur le lien ci-dessous pour accepter l'invitation :</p>
+                    <a href="${inviteLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">Accepter l'invitation</a>
+                    <p style="font-size: 12px; color: #666;">Ce lien expire dans 7 jours.</p>
+                </div>
+            `
+        });
 
         return {
             success: true,
             invitationId: invitation.id,
-            token: token // Returned for easier testing in dev console
+            token: token
         };
     } catch (error) {
         console.error('Error in inviteUserToOrg:', error);

@@ -1,0 +1,28 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 36.4s
+  Running TypeScript ...
+Failed to compile.
+
+./src/application/services/yousign.service.ts:112:36
+Type error: Type 'Buffer<ArrayBufferLike>' is not assignable to type 'BlobPart'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+    Types of property 'buffer' are incompatible.
+      Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+        Type 'SharedArrayBuffer' is missing the following properties from type 'ArrayBuffer': resizable, resize, detached, transfer, transferToFixedLength
+
+[0m [90m 110 |[39m             [90m// 2. Upload Document[39m
+ [90m 111 |[39m             [36mconst[39m formData [33m=[39m [36mnew[39m [33mFormData[39m()[33m;[39m
+[31m[1m>[22m[39m[90m 112 |[39m             [36mconst[39m blob [33m=[39m [36mnew[39m [33mBlob[39m([documentBuffer][33m,[39m { type[33m:[39m [32m'application/pdf'[39m })[33m;[39m
+ [90m     |[39m                                    [31m[1m^[22m[39m
+ [90m 113 |[39m             formData[33m.[39mappend([32m'file'[39m[33m,[39m blob[33m,[39m documentName)[33m;[39m
+ [90m 114 |[39m             formData[33m.[39mappend([32m'nature'[39m[33m,[39m [32m'signable_document'[39m)[33m;[39m
+ [90m 115 |[39m             formData[33m.[39mappend([32m'parse_anchors'[39m[33m,[39m [32m'true'[39m)[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

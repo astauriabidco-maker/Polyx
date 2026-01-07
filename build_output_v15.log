@@ -1,0 +1,25 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 41s
+  Running TypeScript ...
+Failed to compile.
+
+./src/application/services/wallet.service.ts:56:21
+Type error: Type 'Record<string, any> | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+  Type 'null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+
+[0m [90m 54 |[39m                     type[33m:[39m [32m'DEPOSIT'[39m[33m,[39m
+ [90m 55 |[39m                     reference[33m,[39m
+[31m[1m>[22m[39m[90m 56 |[39m                     metadata[33m:[39m metadata [33m||[39m [36mnull[39m
+ [90m    |[39m                     [31m[1m^[22m[39m
+ [90m 57 |[39m                 }
+ [90m 58 |[39m             })
+ [90m 59 |[39m         ])[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

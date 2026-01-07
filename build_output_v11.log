@@ -1,0 +1,24 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 14.9s
+  Running TypeScript ...
+Failed to compile.
+
+./src/application/actions/agenda.actions.ts:83:41
+Type error: Property 'syncEvent' does not exist on type 'typeof GoogleCalendarService'.
+
+[0m [90m 81 |[39m         [36mif[39m (user[33m?[39m[33m.[39mgoogleRefreshToken) {
+ [90m 82 |[39m             console[33m.[39mlog([32m`[AgendaAction] 🔄 Triggering Google Sync for event ${event.id}`[39m)[33m;[39m
+[31m[1m>[22m[39m[90m 83 |[39m             [36mawait[39m [33mGoogleCalendarService[39m[33m.[39msyncEvent(event[33m.[39mid[33m,[39m user[33m.[39mgoogleRefreshToken)[33m;[39m
+ [90m    |[39m                                         [31m[1m^[22m[39m
+ [90m 84 |[39m         }
+ [90m 85 |[39m
+ [90m 86 |[39m         revalidatePath([32m'/app/agenda'[39m)[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

@@ -1,0 +1,24 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 24.6s
+  Running TypeScript ...
+Failed to compile.
+
+./src/app/api/v1/leads/bulk/route.ts:21:74
+Type error: Expected 1 arguments, but got 2.
+
+[0m [90m 19 |[39m         }
+ [90m 20 |[39m
+[31m[1m>[22m[39m[90m 21 |[39m         [36mconst[39m result [33m=[39m [36mawait[39m [33mLeadIngestionService[39m[33m.[39mingestBulk(body[33m.[39mleads[33m,[39m providerId)[33m;[39m
+ [90m    |[39m                                                                          [31m[1m^[22m[39m
+ [90m 22 |[39m
+ [90m 23 |[39m         [90m// Always return 200 even for partial success, as per spec (errors array included)[39m
+ [90m 24 |[39m         [36mreturn[39m [33mNextResponse[39m[33m.[39mjson(result)[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

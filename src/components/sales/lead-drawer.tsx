@@ -1,4 +1,5 @@
-import { X, Phone, Calendar, MessageSquare, Clock, TrendingUp, PhoneOff, AlertCircle } from 'lucide-react';
+import { X, Phone, Calendar, MessageSquare, Clock, TrendingUp, PhoneOff, AlertCircle, Send, RefreshCcw, Loader2 } from 'lucide-react';
+import { CommunicationModal } from '../communication/communication-modal';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Lead, LeadStatus, CallOutcome, LeadWithOrg } from '@/domain/entities/lead';
@@ -9,8 +10,10 @@ import ActivityTimeline from '@/components/crm/ActivityTimeline';
 import CallLogModal from '@/components/crm/CallLogModal';
 
 import { updateLeadAction, getSalesRepsAction, refreshLeadScoreAction } from '@/application/actions/lead.actions'; // [UPDATED]
+import { createAppointmentAction } from '@/application/actions/agenda.actions'; // [NEW] Quick Booking
 import { ScriptService } from '@/application/services/script.service';
-import { RefreshCcw, Loader2 } from 'lucide-react'; // [NEW]
+// [REMOVED DUPLICATE]
+// Removed: import { sendWhatsAppAction, getWhatsAppTemplatesAction } from '@/application/actions/communication.actions'; // [NEW]
 
 interface LeadDrawerProps {
     lead: LeadWithOrg | null;
@@ -47,6 +50,14 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [scheduleDate, setScheduleDate] = useState('');
     const [scheduleTime, setScheduleTime] = useState('');
+    const [isQuickBooking, setIsQuickBooking] = useState(false);
+
+    // WhatsApp State (now used for CommunicationModal)
+    const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
+    // Removed: const [waTemplates, setWaTemplates] = useState<any[]>([]);
+    // Removed: const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+    // Removed: const [waMessage, setWaMessage] = useState('');
+    // Removed: const [isWaSending, setIsWaSending] = useState(false);
 
     const handleScheduleClick = () => {
         setShowScheduleModal(true);
@@ -58,7 +69,7 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
             return;
         }
 
-        const scheduledDate = new Date(`${scheduleDate}T${scheduleTime}`);
+        const scheduledDate = new Date(`${scheduleDate}T${scheduleTime} `);
 
         // Use LeadService to register the interaction (Outcome: CALLBACK_SCHEDULED)
         const updated = LeadService.registerInteraction(lead, 'current-user-id', CallOutcome.CALLBACK_SCHEDULED, {
@@ -101,6 +112,41 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
         }
         setIsRefreshingScore(false);
     };
+
+    // Removed: const handleOpenWhatsApp = async () => {
+    // Removed:     setIsWhatsAppOpen(true);
+    // Removed:     const res = await getWhatsAppTemplatesAction(lead!.organizationId);
+    // Removed:     if (res.success && res.data) {
+    // Removed:         setWaTemplates(res.data);
+    // Removed:     }
+    // Removed: };
+
+    // Removed: const handleSendWhatsApp = async () => {
+    // Removed:     if (!lead || !waMessage) return;
+    // Removed:     setIsWaSending(true);
+    // Removed:     const res = await sendWhatsAppAction(lead.organizationId, lead.phone || '', waMessage);
+    // Removed:     if (res.success) {
+    // Removed:         alert('✅ Message WhatsApp envoyé !');
+    // Removed:         setIsWhatsAppOpen(false);
+    // Removed:         setWaMessage('');
+    // Removed:     } else {
+    // Removed:         alert(res.error);
+    // Removed:     }
+    // Removed:     setIsWaSending(false);
+    // Removed: };
+
+    // Removed: const handleTemplateChange = (templateId: string) => {
+    // Removed:     setSelectedTemplate(templateId);
+    // Removed:     const template = waTemplates.find(t => t.id === templateId);
+    // Removed:     if (template && lead) {
+    // Removed:         let body = template.body
+    // Removed:             .replace('{{firstName}}', lead.firstName)
+    // Removed:             .replace('{{senderName}}', 'Votre conseiller')
+    // Removed:             .replace('{{orgName}}', lead.organizationName || 'Polyx')
+    // Removed:             .replace('{{training}}', lead.examId || 'votre formation');
+    // Removed:         setWaMessage(body);
+    // Removed:     }
+    // Removed: };
 
     const handleSave = async () => {
         if (!lead) return;
@@ -164,7 +210,7 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
 
             {/* Drawer Panel */}
             <div
-                className={`relative w-full ${isCallActive ? 'max-w-4xl' : 'max-w-md'} bg-white shadow-2xl h-full flex flex-col transition-all`}
+                className={`relative w - full ${isCallActive ? 'max-w-4xl' : 'max-w-md'} bg - white shadow - 2xl h - full flex flex - col transition - all`}
                 onClick={(e) => e.stopPropagation()}
             >
 
@@ -233,13 +279,13 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                         {/* Tabs */}
                         <div className="flex border-b border-slate-100">
                             <button
-                                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                className={`flex - 1 py - 3 text - sm font - medium border - b - 2 transition - colors ${activeTab === 'overview' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
                                 onClick={() => setActiveTab('overview')}
                             >
                                 Overview
                             </button>
                             <button
-                                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                className={`flex - 1 py - 3 text - sm font - medium border - b - 2 transition - colors ${activeTab === 'history' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'} `}
                                 onClick={() => setActiveTab('history')}
                             >
                                 History & Logs
@@ -328,10 +374,10 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                                                 {LeadService.getScoringInsights(lead).map((insight, idx) => (
                                                     <div key={idx} className="flex items-center gap-3 p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
                                                         <span className="text-lg">{insight.icon}</span>
-                                                        <span className={`text-xs font-medium ${insight.type === 'positive' ? 'text-emerald-400' :
+                                                        <span className={`text - xs font - medium ${insight.type === 'positive' ? 'text-emerald-400' :
                                                             insight.type === 'negative' ? 'text-rose-400' :
                                                                 'text-yellow-400'
-                                                            }`}>
+                                                            } `}>
                                                             {insight.label}
                                                         </span>
                                                     </div>
@@ -504,14 +550,56 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                                 <Phone size={16} /> Cockpit Call
                             </Button>
                             <Button
+                                className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                                onClick={() => setIsWhatsAppOpen(true)}
+                            >
+                                <Send size={16} /> Relancer
+                            </Button>
+                            <Button
                                 variant="outline"
                                 className="flex-1 gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
                                 onClick={() => setShowCallLogModal(true)}
                             >
                                 <PhoneOff size={16} /> Log Appel
                             </Button>
-                            <Button variant="outline" className="flex-1 gap-2" onClick={handleScheduleClick}>
-                                <Calendar size={16} /> Schedule
+                            <Button
+                                variant="outline"
+                                className="flex-1 gap-2 border-amber-400 text-amber-700 hover:bg-amber-50"
+                                onClick={async () => {
+                                    if (!lead?.agencyId) {
+                                        alert('Ce lead n\'est pas associé à une agence.');
+                                        return;
+                                    }
+                                    setIsQuickBooking(true);
+                                    const scheduledDate = new Date();
+                                    scheduledDate.setDate(scheduledDate.getDate() + 1);
+                                    scheduledDate.setHours(10, 0, 0, 0);
+
+                                    const endDate = new Date(scheduledDate);
+                                    endDate.setMinutes(endDate.getMinutes() + 45);
+
+                                    const res = await createAppointmentAction({
+                                        organisationId: lead.organizationId,
+                                        agencyId: lead.agencyId,
+                                        leadId: lead.id,
+                                        userId: lead.assignedUserId || 'unknown',
+                                        title: `RDV Agence - ${lead.firstName} ${lead.lastName} `,
+                                        type: 'MEETING',
+                                        start: scheduledDate,
+                                        end: endDate
+                                    });
+
+                                    setIsQuickBooking(false);
+                                    if (res.success) {
+                                        alert('✅ Rendez-vous en Agence réservé pour demain 10h !');
+                                    } else {
+                                        alert(`Erreur: ${res.error} `);
+                                    }
+                                }}
+                                disabled={isQuickBooking}
+                            >
+                                {isQuickBooking ? <Loader2 size={16} className="animate-spin" /> : <Calendar size={16} />}
+                                Quick Book
                             </Button>
                         </div>
                     </>
@@ -521,55 +609,136 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                 {showCallLogModal && lead && (
                     <CallLogModal
                         leadId={lead.id}
-                        leadName={`${lead.firstName} ${lead.lastName}`}
+                        leadName={`${lead.firstName} ${lead.lastName} `}
                         onClose={() => setShowCallLogModal(false)}
                         onSuccess={() => setActiveTab('history')}
                     />
                 )}
 
             </div>
-            {/* Schedule Callback Modal */}
+            {/* Intelligent Schedule Modal */}
             {showScheduleModal && (
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
-                    <div className="w-full max-w-md p-6 bg-white shadow-xl rounded-lg animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                            <Calendar className="text-indigo-600" />
-                            Programmer un Rappel
+                    <div className="w-full max-w-lg p-6 bg-white shadow-xl rounded-3xl animate-in zoom-in-95 border border-slate-100" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-3 uppercase italic">
+                            <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Calendar size={20} /></div>
+                            Planifier un Rendez-vous
                         </h3>
-                        <p className="text-sm text-slate-500 mb-6">
-                            Planifier une tâche de rappel pour <strong>{lead.firstName} {lead.lastName}</strong>.
+                        <p className="text-sm text-slate-500 font-medium mb-6">
+                            Assigner un créneau pour <strong>{lead.firstName} {lead.lastName}</strong>.
                         </p>
 
-                        <div className="space-y-4 mb-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Date</label>
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Date</label>
                                 <input
                                     type="date"
-                                    className="w-full p-2 border rounded-md"
+                                    className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                     value={scheduleDate}
                                     onChange={(e) => setScheduleDate(e.target.value)}
                                     min={new Date().toISOString().split('T')[0]}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Heure</label>
-                                <input
-                                    type="time"
-                                    className="w-full p-2 border rounded-md"
-                                    value={scheduleTime}
-                                    onChange={(e) => setScheduleTime(e.target.value)}
-                                />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Heure</label>
+                                    <input
+                                        type="time"
+                                        className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                                        value={scheduleTime}
+                                        onChange={(e) => setScheduleTime(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Type</label>
+                                    <select
+                                        className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        defaultValue="MEETING"
+                                    >
+                                        <option value="MEETING">📍 Agence</option>
+                                        <option value="CALL">📞 Téléphone</option>
+                                        <option value="VISIO">💻 Visio</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 mt-4">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center font-bold text-xs text-indigo-600 shadow-sm">
+                                        {lead.assignedUserId ? '👤' : '?'}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Commercial Assigné</p>
+                                        <p className="text-sm font-bold text-slate-900">
+                                            {lead.assignedUserId ? (salesReps.find(u => u.id === lead.assignedUserId)?.name || 'Commercial Assigné') : 'Non assigné'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {lead.agencyId && (
+                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mt-2 pl-11">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                        Agence liée au lead
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex gap-3 justify-end">
-                            <Button variant="outline" onClick={() => setShowScheduleModal(false)}>Annuler</Button>
-                            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleScheduleSave}>
-                                Enregistrer
+                        <div className="flex gap-3 justify-end mt-8">
+                            <Button variant="ghost" onClick={() => setShowScheduleModal(false)} className="font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl">Annuler</Button>
+                            <Button
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 rounded-xl shadow-lg shadow-indigo-200"
+                                onClick={async () => {
+                                    if (!scheduleDate || !scheduleTime) return;
+
+                                    const start = new Date(`${scheduleDate}T${scheduleTime} `);
+                                    const end = new Date(start);
+                                    end.setMinutes(end.getMinutes() + 45);
+
+                                    const res = await createAppointmentAction({
+                                        organisationId: lead.organizationId,
+                                        agencyId: lead.agencyId,
+                                        leadId: lead.id,
+                                        userId: lead.assignedUserId || 'unknown', // Fallback needed
+                                        title: `RDV Lead - ${lead.firstName} ${lead.lastName} `,
+                                        type: 'MEETING',
+                                        start,
+                                        end
+                                    });
+
+                                    if (res.success) {
+                                        // Also update lead interaction
+                                        const updated = await LeadService.registerInteraction(lead, 'current-user-id', CallOutcome.CALLBACK_SCHEDULED, {
+                                            nextCallback: start,
+                                            note: 'Rendez-vous planifié via Agenda'
+                                        });
+                                        onUpdate(updated);
+                                        setShowScheduleModal(false);
+                                        alert("✅ Rendez-vous confirmé et ajouté à l'agenda !");
+                                    } else {
+                                        alert(res.error);
+                                    }
+                                }}
+                            >
+                                <Calendar size={18} className="mr-2" />
+                                Confirmer le RDV
                             </Button>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Communication Modal (Replaces old WhatsApp Modal) */}
+            {isWhatsAppOpen && lead && (
+                <CommunicationModal
+                    leadIds={[lead.id]}
+                    onClose={() => setIsWhatsAppOpen(false)}
+                    onSuccess={() => {
+                        setIsWhatsAppOpen(false);
+                        onUpdate(lead); // Refresh lead just in case
+                    }}
+                    title={`Relancer ${lead.firstName} `}
+                />
             )}
 
         </div >,

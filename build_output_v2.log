@@ -1,0 +1,289 @@
+
+> app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 3 errors:
+./src/application/actions/edof.actions.ts:2:10
+Ecmascript file had an error
+[0m [90m 1 |[39m [36mimport[39m { [33mEdofService[39m } [36mfrom[39m [32m'@/application/services/edof.service'[39m[33m;[39m
+[31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { revalidatePath } [36mfrom[39m [32m'next/cache'[39m[33m;[39m
+ [90m   |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@/lib/prisma'[39m[33m;[39m
+ [90m 4 |[39m [36mimport[39m { encrypt } [36mfrom[39m [32m'@/lib/crypto'[39m[33m;[39m
+ [90m 5 |[39m[0m
+
+You're importing a component that needs "revalidatePath". That only works in a Server Component but one of its parents is marked with "use client", so it's a Client Component.
+Learn more: https://nextjs.org/docs/app/building-your-application/rendering
+
+
+
+Import traces:
+  Client Component Browser:
+    ./src/application/actions/edof.actions.ts [Client Component Browser]
+    ./src/app/app/learners/page.tsx [Client Component Browser]
+    ./src/app/app/learners/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/application/actions/edof.actions.ts [Client Component SSR]
+    ./src/app/app/learners/page.tsx [Client Component SSR]
+    ./src/app/app/learners/page.tsx [Server Component]
+
+
+./src/application/services/wallet.service.ts:5:1
+Ecmascript file had an error
+[0m [90m  3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@/lib/prisma'[39m[33m;[39m
+ [90m  4 |[39m
+[31m[1m>[22m[39m[90m  5 |[39m [36mexport[39m [36mclass[39m [33mWalletService[39m {
+ [90m    |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  6 |[39m
+ [90m    |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  7 |[39m     [90m/**[39m
+ [90m    |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  8 |[39m [90m     * Get or create wallet for an organisation[39m
+ [90m    |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  9 |[39m [90m     */[39m
+ [90m    |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  10 |[39m     [36mstatic[39m [36masync[39m getOrCreate(orgId[33m:[39m string) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  11 |[39m         [36mlet[39m wallet [33m=[39m [36mawait[39m prisma[33m.[39mwallet[33m.[39mfindUnique({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  12 |[39m             where[33m:[39m { organisationId[33m:[39m orgId }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  13 |[39m         })[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  14 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  15 |[39m         [36mif[39m ([33m![39mwallet) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  16 |[39m             wallet [33m=[39m [36mawait[39m prisma[33m.[39mwallet[33m.[39mcreate({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  17 |[39m                 data[33m:[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  18 |[39m                     organisationId[33m:[39m orgId[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  19 |[39m                     balance[33m:[39m [35m0.0[39m[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  20 |[39m                     currency[33m:[39m [32m'EUR'[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  21 |[39m                 }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  22 |[39m             })[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  23 |[39m         }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  24 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  25 |[39m         [36mreturn[39m wallet[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  26 |[39m     }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  27 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  28 |[39m     [90m/**[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  29 |[39m [90m     * Get current balance[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  30 |[39m [90m     */[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  31 |[39m     [36mstatic[39m [36masync[39m getBalance(orgId[33m:[39m string)[33m:[39m [33mPromise[39m[33m<[39m[33mnumber[39m[33m>[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  32 |[39m         [36mconst[39m wallet [33m=[39m [36mawait[39m [36mthis[39m[33m.[39mgetOrCreate(orgId)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  33 |[39m         [36mreturn[39m wallet[33m.[39mbalance[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  34 |[39m     }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  35 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  36 |[39m     [90m/**[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  37 |[39m [90m     * Credit wallet (deposit/top-up)[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  38 |[39m [90m     */[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  39 |[39m     [36mstatic[39m [36masync[39m credit(orgId[33m:[39m string[33m,[39m amount[33m:[39m number[33m,[39m reference[33m:[39m string[33m,[39m metadata[33m?[39m[33m:[39m [33mRecord[39m[33m<[39m[33mstring[39m[33m,[39m any[33m>[39m) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  40 |[39m         [36mif[39m (amount [33m<=[39m [35m0[39m) [36mthrow[39m [36mnew[39m [33mError[39m([32m"Amount must be positive"[39m)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  41 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  42 |[39m         [36mconst[39m wallet [33m=[39m [36mawait[39m [36mthis[39m[33m.[39mgetOrCreate(orgId)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  43 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  44 |[39m         [90m// Update balance and create transaction atomically[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  45 |[39m         [36mconst[39m [updatedWallet] [33m=[39m [36mawait[39m prisma[33m.[39m$transaction([
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  46 |[39m             prisma[33m.[39mwallet[33m.[39mupdate({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  47 |[39m                 where[33m:[39m { id[33m:[39m wallet[33m.[39mid }[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  48 |[39m                 data[33m:[39m { balance[33m:[39m { increment[33m:[39m amount } }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  49 |[39m             })[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  50 |[39m             prisma[33m.[39mwalletTransaction[33m.[39mcreate({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  51 |[39m                 data[33m:[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  52 |[39m                     walletId[33m:[39m wallet[33m.[39mid[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  53 |[39m                     amount[33m:[39m amount[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  54 |[39m                     type[33m:[39m [32m'DEPOSIT'[39m[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  55 |[39m                     reference[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  56 |[39m                     metadata[33m:[39m metadata [33m||[39m [36mnull[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  57 |[39m                 }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  58 |[39m             })
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  59 |[39m         ])[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  60 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  61 |[39m         [36mreturn[39m updatedWallet[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  62 |[39m     }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  63 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  64 |[39m     [90m/**[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  65 |[39m [90m     * Debit wallet (usage consumption)[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  66 |[39m [90m     * Throws error if insufficient funds[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  67 |[39m [90m     */[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  68 |[39m     [36mstatic[39m [36masync[39m debit(orgId[33m:[39m string[33m,[39m amount[33m:[39m number[33m,[39m reference[33m:[39m string[33m,[39m metadata[33m?[39m[33m:[39m [33mRecord[39m[33m<[39m[33mstring[39m[33m,[39m any[33m>[39m) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  69 |[39m         [36mif[39m (amount [33m<=[39m [35m0[39m) [36mthrow[39m [36mnew[39m [33mError[39m([32m"Amount must be positive"[39m)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  70 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  71 |[39m         [36mconst[39m wallet [33m=[39m [36mawait[39m [36mthis[39m[33m.[39mgetOrCreate(orgId)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  72 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  73 |[39m         [36mif[39m (wallet[33m.[39mbalance [33m<[39m amount) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  74 |[39m             [36mthrow[39m [36mnew[39m [33mError[39m([32m`Solde insuffisant. Disponible: ${wallet.balance.toFixed(2)}€, Requis: ${amount.toFixed(2)}€`[39m)[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  75 |[39m         }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  76 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  77 |[39m         [90m// Update balance and create transaction atomically[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  78 |[39m         [36mconst[39m [updatedWallet] [33m=[39m [36mawait[39m prisma[33m.[39m$transaction([
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  79 |[39m             prisma[33m.[39mwallet[33m.[39mupdate({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  80 |[39m                 where[33m:[39m { id[33m:[39m wallet[33m.[39mid }[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  81 |[39m                 data[33m:[39m { balance[33m:[39m { decrement[33m:[39m amount } }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  82 |[39m             })[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  83 |[39m             prisma[33m.[39mwalletTransaction[33m.[39mcreate({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  84 |[39m                 data[33m:[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  85 |[39m                     walletId[33m:[39m wallet[33m.[39mid[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  86 |[39m                     amount[33m:[39m [33m-[39mamount[33m,[39m [90m// Negative for debit[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  87 |[39m                     type[33m:[39m [32m'USAGE'[39m[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  88 |[39m                     reference[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  89 |[39m                     metadata[33m:[39m metadata [33m||[39m [36mnull[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  90 |[39m                 }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  91 |[39m             })
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  92 |[39m         ])[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  93 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  94 |[39m         [36mreturn[39m updatedWallet[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  95 |[39m     }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  96 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  97 |[39m     [90m/**[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  98 |[39m [90m     * Get transaction history[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m  99 |[39m [90m     */[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 100 |[39m     [36mstatic[39m [36masync[39m getTransactions(orgId[33m:[39m string[33m,[39m limit [33m=[39m [35m50[39m) {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 101 |[39m         [36mconst[39m wallet [33m=[39m [36mawait[39m prisma[33m.[39mwallet[33m.[39mfindUnique({
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 102 |[39m             where[33m:[39m { organisationId[33m:[39m orgId }[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 103 |[39m             include[33m:[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 104 |[39m                 transactions[33m:[39m {
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 105 |[39m                     orderBy[33m:[39m { createdAt[33m:[39m [32m'desc'[39m }[33m,[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 106 |[39m                     take[33m:[39m limit
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 107 |[39m                 }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 108 |[39m             }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 109 |[39m         })[33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 110 |[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 111 |[39m         [36mreturn[39m wallet[33m?[39m[33m.[39mtransactions [33m||[39m [][33m;[39m
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 112 |[39m     }
+ [90m     |[39m [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 113 |[39m }
+ [90m     |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 114 |[39m[0m
+
+Only async functions are allowed to be exported in a "use server" file.
+
+
+Import trace:
+  Server Component:
+    ./src/application/services/wallet.service.ts
+    ./src/application/actions/wallet.actions.ts
+
+
+./src/application/actions/wallet.actions.ts:4:1
+Export WalletService doesn't exist in target module
+[0m [90m 2 |[39m
+ [90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@/lib/prisma'[39m[33m;[39m
+[31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { [33mWalletService[39m } [36mfrom[39m [32m'@/application/services/wallet.service'[39m[33m;[39m
+ [90m   |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 5 |[39m [36mimport[39m { revalidatePath } [36mfrom[39m [32m'next/cache'[39m[33m;[39m
+ [90m 6 |[39m
+ [90m 7 |[39m [90m/**[39m[0m
+
+The export WalletService was not found in module [project]/src/application/services/wallet.service.ts [app-rsc] (ecmascript).
+The module has no exports at all.
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+    at <unknown> (./src/application/actions/edof.actions.ts:2:10)
+    at <unknown> (./src/application/services/wallet.service.ts:5:1)
+    at <unknown> (./src/application/actions/wallet.actions.ts:4:1)

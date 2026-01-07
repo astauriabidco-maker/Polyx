@@ -1,223 +1,247 @@
 'use server';
 
-import { prisma } from "@/lib/prisma";
-import { User, LearnerFolder } from "@prisma/client";
-import { revalidatePath } from "next/cache";
-import { ComplianceEngine } from "../services/compliance-engine";
-import { FundingType, DocumentType } from "@/domain/entities/learner";
-import { CommunicationService } from "../services/communication.service";
+import { prisma } from '@/lib/prisma';
+import { revalidatePath } from 'next/cache';
 
-// --- QUERY ACTIONS ---
+// ============================================
+// LEARNER PORTAL ACTIONS
+// ============================================
 
-export async function getLearnersAction(organisationId: string) {
+export async function getLearnerSelfAction(userId: string) {
     try {
-        const learners = await prisma.learner.findMany({
-            where: { organisationId },
+        // Find Learner linked to this User
+        // Note: A User might be a staff member AND a learner, or just a learner.
+        // We look for a Learner record where userId matches.
+        const learner = await prisma.learner.findFirst({
+            where: { userId },
+            include: {
+                organisation: true,
+                folders: {
+                    include: {
+                        training: true,
+                        documents: true
+                    },
+                    where: { status: { not: 'ARCHIVED' } } // Exclude archived
+                },
+                agency: true
+            }
+        });
+
+        if (!learner) {
+            return { success: false, error: 'Profil apprenant non trouvé.' };
+        }
+
+        return { success: true, data: learner };
+    } catch (error) {
+        console.error('[LearnerAction] Error fetching self:', error);
+        return { success: false, error: 'Erreur lors de la récupération du profil.' };
+    }
+}
+
+export async function getLearnerPlanningAction(learnerId: string) {
+    try {
+        // Get training sessions where the learner is registered via LearnerFolder -> Training
+        // OR better: if we have a direct link to attendance/sessions.
+        // Ideally, we should check sessions linked to the Learner's Folder.
+
+        // Strategy: Get all folders, then find sessions for the training in that folder.
+        // AND check if the learner is specifically assigned to a session (if we have that granularity).
+        // For now, let's fetch sessions for the training associated with the learner's active folders.
+
+        const learner = await prisma.learner.findUnique({
+            where: { id: learnerId },
             include: {
                 folders: {
-                    include: { documents: true }
+                    include: { training: true }
+                }
+            }
+        });
+
+        if (!learner) {
+            return { success: false, error: 'Apprenant introuvable.' };
+        }
+
+        const trainingIds = learner.folders
+            .map(f => f.trainingId)
+            .filter((id): id is string => !!id);
+
+        if (trainingIds.length === 0) {
+            return { success: true, data: [] };
+        }
+
+        // Fetch sessions for these trainings
+        // In a real scenario, we might want to filter by sessions specifically assigned to this learner group or agency.
+        const sessions = await (prisma as any).trainingSession.findMany({
+            where: {
+                trainingId: { in: trainingIds },
+                date: { gte: new Date() }, // Future sessions primarily
+                // Filter by Agency if learner has one?
+                ...(learner.agencyId ? { agencyId: learner.agencyId } : {})
+            },
+            include: {
+                training: true,
+                formateur: true
+            },
+            orderBy: { date: 'asc' },
+            take: 10
+        });
+
+        return { success: true, data: sessions };
+
+    } catch (error) {
+        console.error('[LearnerAction] Error fetching planning:', error);
+        return { success: false, error: 'Erreur lors de la récupération du planning.' };
+    }
+}
+
+export async function getLearnerDocumentsAction(learnerId: string) {
+    try {
+        // Documents are usually stored in LearnerFolder -> LearnerDocument
+        const documents = await prisma.learnerDocument.findMany({
+            where: {
+                folder: {
+                    learnerId: learnerId
                 }
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: {
+                folder: {
+                    select: { training: { select: { title: true } } }
+                }
+            }
+        });
+
+        return { success: true, data: documents };
+    } catch (error) {
+        console.error('[LearnerAction] Error fetching documents:', error);
+        return { success: false, error: 'Erreur lors de la récupération des documents.' };
+    }
+}
+
+// ============================================
+// LEARNER ADMIN ACTIONS
+// ============================================
+
+export async function getLearnersAction(orgId: string) {
+    try {
+        const learners = await prisma.learner.findMany({
+            where: { organisationId: orgId },
+            include: {
+                folders: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1
+                }
+            },
+            orderBy: { lastName: 'asc' }
         });
         return { success: true, learners };
     } catch (error) {
-        console.error("Error fetching learners:", error);
-        return { success: false, error: "Failed to fetch learners" };
+        console.error('[LearnerAction] Error fetching learners:', error);
+        return { success: false, error: 'Failed to fetch learners' };
     }
 }
 
-export async function getLearnerDetailsAction(learnerId: string) {
+export async function getLearnerDetailsAction(id: string) {
     try {
         const learner = await (prisma as any).learner.findUnique({
-            where: { id: learnerId },
+            where: { id },
             include: {
-                agency: true,
                 folders: {
-                    include: { documents: true, training: true },
-                    orderBy: { createdAt: 'desc' }
-                }
-            }
-        });
-        return { success: true, learner };
-    } catch (error) {
-        return { success: false, error: "Failed to fetch learner details" };
-    }
-}
-
-// --- MUTATION ACTIONS ---
-
-/**
- * Creates a Learner from a signed Lead (Closing phase)
- */
-export async function createLearnerFromLeadAction(leadId: string, fundingType: FundingType, trainingId?: string) {
-    try {
-        const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-        if (!lead) return { success: false, error: "Lead not found" };
-
-        // 1. Create Learner Identity
-        const learner = await prisma.learner.create({
-            data: {
-                organisationId: lead.organisationId,
-                firstName: lead.firstName,
-                lastName: lead.lastName,
-                email: lead.email || "no-email",
-                phone: lead.phone,
-                agencyId: lead.agencyId,
-                leadId: lead.id
-            }
-        });
-
-        // 2. Determine Required Documents
-        const requirements = ComplianceEngine.getRequirements(fundingType);
-
-        // 3. Create Folder with Documents
-        const folder = await prisma.learnerFolder.create({
-            data: {
-                learnerId: learner.id,
-                fundingType,
-                status: 'ONBOARDING',
-                complianceStatus: 'PENDING',
-                trainingId,
-                documents: {
-                    create: requirements.map(req => ({
-                        type: req.type,
-                        label: req.label,
-                        isRequired: req.required,
-                        status: 'MISSING'
-                    }))
-                }
-            }
-        });
-
-        // 4. Update Lead to WON/CLOSED if not already
-        await prisma.lead.update({
-            where: { id: leadId },
-            data: { salesStage: 'GAGNE', status: 'CLIENT' }
-        });
-
-        revalidatePath('/app/crm');
-        revalidatePath('/app/learners');
-
-        return { success: true, learnerId: learner.id };
-
-    } catch (error) {
-        console.error("Create Learner Error:", error);
-        return { success: false, error: "Failed to create learner" };
-    }
-}
-
-/**
- * Manually create a learner (bypass CRM)
- */
-export async function createLearnerAction(data: {
-    organisationId: string,
-    firstName: string,
-    lastName: string,
-    email: string,
-    fundingType: FundingType
-}) {
-    try {
-        const learner = await prisma.learner.create({
-            data: {
-                organisationId: data.organisationId,
-                firstName: data.firstName,
-                lastName: data.lastName,
-                email: data.email,
-            }
-        });
-
-        const requirements = ComplianceEngine.getRequirements(data.fundingType);
-
-        await prisma.learnerFolder.create({
-            data: {
-                learnerId: learner.id,
-                fundingType: data.fundingType,
-                documents: {
-                    create: requirements.map(req => ({
-                        type: req.type,
-                        label: req.label,
-                        isRequired: req.required,
-                        status: 'MISSING'
-                    }))
-                }
-            }
-        });
-
-        revalidatePath('/app/learners');
-        return { success: true, learner };
-    } catch (error) {
-        return { success: false, error: "Failed to create learner" };
-    }
-}
-
-export async function updateLearnerFolderAction(folderId: string, data: Partial<LearnerFolder>) {
-    try {
-        const input = data as any;
-        const allowedUpdates: any = {};
-        if (input.isBlocked !== undefined) allowedUpdates.isBlocked = input.isBlocked;
-        if (input.isLowLevel !== undefined) allowedUpdates.isLowLevel = input.isLowLevel;
-        if (input.isDropoutRisk !== undefined) allowedUpdates.isDropoutRisk = input.isDropoutRisk;
-        if (input.examDate !== undefined) allowedUpdates.examDate = input.examDate;
-        if (input.blockReason !== undefined) allowedUpdates.blockReason = input.blockReason;
-
-        // Lifecycle Fields
-        if (input.status !== undefined) allowedUpdates.status = input.status;
-        if (input.actualStartDate !== undefined) allowedUpdates.actualStartDate = input.actualStartDate;
-        if (input.invoicedDate !== undefined) allowedUpdates.invoicedDate = input.invoicedDate;
-
-        if (input.invoicedDate !== undefined) allowedUpdates.invoicedDate = input.invoicedDate;
-
-        console.log("Upating Folder:", folderId, "with data:", allowedUpdates);
-
-        const updated = await prisma.learnerFolder.update({
-            where: { id: folderId },
-            data: allowedUpdates,
-            include: {
-                learner: {
                     include: {
-                        organisation: true
-                    }
-                }
+                        training: true,
+                        documents: true
+                    },
+                    orderBy: { createdAt: 'desc' }
+                },
+                agency: true
             }
         });
-
-        console.log("Update Success:", updated);
-
-        // Automation: Send email if status marked as COMPLETED
-        if (input.status === 'COMPLETED') {
-            const domain = process.env.NEXT_PUBLIC_APP_URL || 'https://polyx-app.vercel.app';
-            CommunicationService.sendCertificateEmail({
-                to: updated.learner.email,
-                learnerName: `${updated.learner.firstName} ${updated.learner.lastName}`,
-                trainingTitle: updated.trainingTitle || "Formation Polyx",
-                organisationName: updated.learner.organisation.name,
-                certificateUrl: `${domain}/app/learners/${updated.learner.id}`,
-                surveyUrl: `${domain}/survey/${updated.id}`
-            }).catch(e => console.error("Auto Email Error:", e));
-        }
-
-        // Revalidate the learner details page
-        revalidatePath(`/app/learners/${updated.learnerId}`);
-
-        return { success: true, folder: updated };
+        return { success: true, learner };
     } catch (error) {
-        console.error("Update Folder Error:", error);
-        return { success: false, error: "Failed to update folder" };
+        return { success: false, error: 'Failed to fetch learner details' };
     }
 }
 
 export async function updateLearnerAgencyAction(learnerId: string, agencyId: string | null) {
     try {
-        const updated = await (prisma as any).learner.update({
+        await prisma.learner.update({
             where: { id: learnerId },
-            data: { agencyId: agencyId || null }
+            data: { agencyId }
+        });
+        revalidatePath(`/app/learners/${learnerId}`);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: 'Failed to update agency' };
+    }
+}
+
+export async function updateLearnerFolderAction(folderId: string, data: any) {
+    try {
+        const folder = await prisma.learnerFolder.update({
+            where: { id: folderId },
+            data
+        });
+        revalidatePath('/app/learners');
+        return { success: true, folder };
+    } catch (error) {
+        return { success: false, error: 'Failed to update folder' };
+    }
+}
+
+// ============================================
+// LEARNER ACCESS MANAGEMENT
+// ============================================
+
+export async function grantLearnerAccessAction(learnerId: string, email: string) {
+    try {
+        const learner = await prisma.learner.findUnique({
+            where: { id: learnerId }
         });
 
-        revalidatePath(`/app/learners/${learnerId}`);
-        return { success: true, learner: updated };
+        if (!learner) return { success: false, error: 'Apprenant introuvable.' };
+
+        // Check if user already exists
+        let user = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        // Generate random temp password
+        const tempPassword = Math.random().toString(36).slice(-8);
+
+        if (!user) {
+            // Create new User
+            // Note: In production, hash the password properly!
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    firstName: learner.firstName,
+                    lastName: learner.lastName,
+                    hashedPassword: tempPassword, // Placeholder for hash
+                    isActive: true
+                }
+            });
+
+            // Create Access Grant for this Org as LEARNER role?
+            // "LEARNER" role ID assumed to exist or be standard string
+            await prisma.userAccessGrant.create({
+                data: {
+                    userId: user.id,
+                    organisationId: learner.organisationId,
+                    roleId: 'LEARNER'
+                }
+            });
+        }
+
+        // Link Learner to User
+        await prisma.learner.update({
+            where: { id: learnerId },
+            data: { userId: user.id }
+        });
+
+        revalidatePath('/app/admin/learners');
+        return { success: true, data: { user, tempPassword } }; // Return temp password to display
     } catch (error) {
-        console.error("Update Learner Agency Error:", error);
-        return { success: false, error: "Failed to update learner agency" };
+        console.error('[LearnerAction] Error granting access:', error);
+        return { success: false, error: 'Failed to grant access.' };
     }
 }
