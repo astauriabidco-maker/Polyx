@@ -48,6 +48,11 @@ export function LeadCard({ lead, onClick, isUnified, isSelected, onToggleSelect 
                         <div>
                             <div className="flex items-center gap-2">
                                 <h4 className={`font-semibold ${isSelected ? 'text-white' : 'text-slate-100'}`}>{lead.firstName} {lead.lastName}</h4>
+                                {lead.callAttempts === 0 && (new Date().getTime() - new Date(lead.createdAt).getTime() < 3600000) && (
+                                    <Badge className="text-[8px] px-1 h-3 bg-indigo-500 text-white border-0 animate-pulse">
+                                        NOUVEAU
+                                    </Badge>
+                                )}
                                 <Badge variant="secondary" className="text-[9px] px-1 h-4 bg-slate-800 text-slate-400 border-slate-700">
                                     {lead.status}
                                 </Badge>

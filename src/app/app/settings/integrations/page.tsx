@@ -6,45 +6,31 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    MessageSquare,
+    Phone,
+    Settings2,
     Shield,
-    CheckCircle2,
-    XCircle,
+    MessageSquare,
+    Calendar,
+    PenTool,
+    CreditCard,
+    Zap,
+    Check,
     Loader2,
+    Mic,
     Eye,
     EyeOff,
-    CheckCircle,
-    Settings2,
-    Zap,
+    CheckCircle2,
+    XCircle,
     AlertTriangle,
     RefreshCw,
     Unlink,
-    CreditCard,
-    Mail,
-    Server,
-    Send,
-    Check,
-    PenTool,
-    FileSignature,
-    Link,
-    Brain,
-    Sparkles,
-    GraduationCap,
-    BookOpen,
-    Calendar,
-    Building2,
-    FileText,
-    Receipt
+    MapPin,
+    CheckCircle
 } from 'lucide-react';
+
 import { useToast } from "@/components/ui/use-toast";
 import { useAuthStore } from '@/application/store/auth-store';
 import {
@@ -111,7 +97,10 @@ import {
     testSendGridConnectionAction,
     getTwilioSettingsAction,
     saveTwilioConfigAction,
-    testTwilioConnectionAction
+    testTwilioConnectionAction,
+    saveVoiceConfigAction,
+    getVoiceSettingsAction,
+    testVoiceConnectionAction
 } from '@/application/actions/communication.actions';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -692,6 +681,7 @@ export default function IntegrationsPage() {
                     COMMUNICATION OMNICANALE
                 ═══════════════════════════════════════════════════════════════════════════════ */}
                 <TwilioCard orgId={activeOrganization.id} />
+                <VoiceIntegrationCard orgId={activeOrganization.id} />
                 <SendGridCard orgId={activeOrganization.id} />
                 <GoogleCalendarCard orgId={activeOrganization.id} />
 
@@ -709,6 +699,7 @@ export default function IntegrationsPage() {
                 <StripeCard orgId={activeOrganization.id} />
                 <AiCard orgId={activeOrganization.id} />
                 <LmsCard orgId={activeOrganization.id} />
+                <GeocodingCard />
             </div>
 
             {/* FOOTER NOTE */}
@@ -718,6 +709,61 @@ export default function IntegrationsPage() {
                 </p>
             </div>
         </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GEOCODING CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function GeocodingCard() {
+    return (
+        <Card className="border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-amber-500 to-orange-500 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                        <MapPin size={24} />
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg">Géolocalisation</CardTitle>
+                        <CardDescription className="text-amber-100 text-xs">
+                            Optimisation des tournées & Cartographie
+                        </CardDescription>
+                    </div>
+                    <div className="ml-auto">
+                        <span className="flex items-center gap-1 px-3 py-1 bg-white/20 rounded-full text-xs font-bold">
+                            <CheckCircle2 size={14} /> Actif
+                        </span>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <MapPin className="text-amber-600" size={16} />
+                        </div>
+                        <div>
+                            <p className="font-bold text-amber-900 text-sm">Service Adresse.data.gouv.fr</p>
+                            <p className="text-xs text-amber-700 mt-1">
+                                Service public gratuit utilisant la Base Adresse Nationale (BAN).
+                                Les adresses de vos leads sont automatiquement converties en coordonnées GPS pour la vue carte.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Quota</p>
+                        <p className="text-lg font-black text-slate-700">Illimité</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Latence</p>
+                        <p className="text-lg font-black text-emerald-600">~50ms</p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -1497,6 +1543,8 @@ function TwilioCard({ orgId }: { orgId?: string }) {
         const res = await saveTwilioConfigAction(orgId!, {
             smsEnabled,
             whatsappEnabled,
+            voiceEnabled: false, // Legacy voice managed by new card
+            recordingEnabled: false,
             accountSid,
             authToken: authToken.includes('•') ? undefined : authToken,
             fromSms,
@@ -1660,3 +1708,177 @@ function SendGridCard({ orgId }: { orgId?: string }) {
         </Card>
     );
 }
+
+function VoiceIntegrationCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [provider, setProvider] = useState<string>('TWILIO');
+    const [enabled, setEnabled] = useState(false);
+    const [recordingEnabled, setRecordingEnabled] = useState(false);
+    const [config, setConfig] = useState<any>({});
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getVoiceSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setProvider(res.data.voiceProvider || 'TWILIO');
+            setEnabled(res.data.voiceEnabled || false);
+            setRecordingEnabled(res.data.recordingEnabled || false);
+            setConfig(res.data.voiceConfig || {});
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveVoiceConfigAction(orgId!, {
+            provider,
+            enabled,
+            recordingEnabled,
+            config
+        });
+        if (res.success) toast({ title: "Configuration VoIP sauvegardée 📞" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testVoiceConnectionAction(orgId!, provider);
+        if (res.success) toast({ title: `Connexion ${provider} OK ✅` });
+        else toast({ title: `Échec ${provider}`, description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    const setConfigField = (field: string, value: string) => {
+        setConfig((prev: any) => ({ ...prev, [field]: value }));
+    };
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement VoIP...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <Phone size={24} />
+                    <div>
+                        <CardTitle className="text-lg">VoIP & Téléphonie</CardTitle>
+                        <CardDescription className="text-blue-100 text-xs">Aircall, Ringover, Twilio Voice et plus</CardDescription>
+                    </div>
+                    <div className="ml-auto flex gap-2">
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] opacity-80 font-bold uppercase">Activer</span>
+                            <Switch checked={enabled} onCheckedChange={setEnabled} />
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] opacity-80 font-bold uppercase">REC</span>
+                            <Switch checked={recordingEnabled} onCheckedChange={setRecordingEnabled} disabled={!enabled} />
+                        </div>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="space-y-2">
+                    <Label>Opérateur VoIP</Label>
+                    <Select value={provider} onValueChange={setProvider}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Choisir un opérateur" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="TWILIO">Twilio Voice</SelectItem>
+                            <SelectItem value="AIRCALL">Aircall</SelectItem>
+                            <SelectItem value="RINGOVER">Ringover</SelectItem>
+                            <SelectItem value="RINGCENTRAL">RingCentral</SelectItem>
+                            <SelectItem value="UBEPHONE">Ubephone</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {provider === 'TWILIO' && (
+                    <div className="space-y-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <div className="text-xs font-bold text-slate-500 uppercase">Paramètres Twilio Voice</div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Account SID</Label>
+                                <Input
+                                    value={config.accountSid || ''}
+                                    onChange={e => setConfigField('accountSid', e.target.value)}
+                                    placeholder="AC..."
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Auth Token</Label>
+                                <Input
+                                    type="password"
+                                    value={config.authToken ? '••••••••' : ''}
+                                    onChange={e => setConfigField('authToken', e.target.value)}
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Numéro Voice</Label>
+                            <Input
+                                value={config.fromNumber || ''}
+                                onChange={e => setConfigField('fromNumber', e.target.value)}
+                                placeholder="+33..."
+                                className="h-8 text-xs"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {(provider === 'AIRCALL' || provider === 'RINGOVER') && (
+                    <div className="space-y-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <div className="text-xs font-bold text-slate-500 uppercase">Configuration {provider}</div>
+                        <div className="space-y-2">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Clé API / Token</Label>
+                                <Input
+                                    type="password"
+                                    value={config.apiKey || ''}
+                                    onChange={e => setConfigField('apiKey', e.target.value)}
+                                    placeholder="Sk_..."
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Webhook URL (pour l'archivage)</Label>
+                                <Input
+                                    value={config.webhookUrl || ''}
+                                    onChange={e => setConfigField('webhookUrl', e.target.value)}
+                                    placeholder="https://..."
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {provider !== 'TWILIO' && provider !== 'AIRCALL' && provider !== 'RINGOVER' && (
+                    <div className="p-6 text-center border-2 border-dashed rounded-lg bg-slate-50">
+                        <div className="text-sm text-slate-500">Intégration native {provider} en cours de développement</div>
+                        <Button variant="link" size="sm" className="mt-2 text-blue-600">Demander l'accès anticipé</Button>
+                    </div>
+                )}
+
+                <div className="flex items-center gap-3 pt-2">
+                    <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester la connexion
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+

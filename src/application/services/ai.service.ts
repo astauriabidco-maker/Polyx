@@ -220,4 +220,92 @@ export class AIService {
             error: result.error
         };
     }
+
+    /**
+     * Analyzes call notes to extract sentiment, objections, and key points
+     */
+    static async analyzeCall(orgId: string, callNotes: string, transcript?: string): Promise<{
+        sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+        objections: string[];
+        summary: string;
+        keyPoints: string[];
+        buyingSignals: string[];
+    }> {
+        const systemPrompt = `Tu es un expert en analyse d'appels commerciaux pour un organisme de formation professionnelle. 
+Analyse les notes d'appel et/ou la transcription ci-dessous et retourne un JSON avec:
+{
+  "sentiment": "POSITIVE" | "NEUTRAL" | "NEGATIVE",
+  "objections": ["objection 1", "objection 2", ...],
+  "summary": "Résumé de l'appel en 1-2 phrases",
+  "keyPoints": ["point clé 1", "point clé 2", ...],
+  "buyingSignals": ["signal d'achat 1", ...]
+}
+
+Objections courantes à détecter: prix trop élevé, pas le bon moment, besoin de réflexion, déjà formé ailleurs, pas de financement, sceptique sur les résultats, concurrence moins chère.
+Signaux d'achat: demande de détails, questions sur le timing, mention du budget, comparaison active, urgence exprimée.`;
+
+        const userPrompt = transcript
+            ? `Notes d'appel:\n${callNotes}\n\nTranscription:\n${transcript}`
+            : `Notes d'appel:\n${callNotes}`;
+
+        const result = await this.prompt(orgId, systemPrompt, userPrompt);
+
+        if (result.success && result.text) {
+            try {
+                const parsed = JSON.parse(result.text.replace(/```json\n?|\n?```/g, ''));
+                return {
+                    sentiment: parsed.sentiment || 'NEUTRAL',
+                    objections: parsed.objections || [],
+                    summary: parsed.summary || '',
+                    keyPoints: parsed.keyPoints || [],
+                    buyingSignals: parsed.buyingSignals || []
+                };
+            } catch {
+                return this.fallbackCallAnalysis(callNotes);
+            }
+        }
+
+        return this.fallbackCallAnalysis(callNotes);
+    }
+
+    private static fallbackCallAnalysis(notes: string): {
+        sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+        objections: string[];
+        summary: string;
+        keyPoints: string[];
+        buyingSignals: string[];
+    } {
+        const lower = notes.toLowerCase();
+
+        // Sentiment detection
+        let sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' = 'NEUTRAL';
+        if (lower.includes('intéressé') || lower.includes('ok') || lower.includes('rdv') || lower.includes('rendez-vous')) {
+            sentiment = 'POSITIVE';
+        }
+        if (lower.includes('pas intéressé') || lower.includes('non') || lower.includes('trop cher') || lower.includes('refus')) {
+            sentiment = 'NEGATIVE';
+        }
+
+        // Objection detection
+        const objections: string[] = [];
+        if (lower.includes('prix') || lower.includes('cher') || lower.includes('budget')) objections.push('Prix / Budget');
+        if (lower.includes('réfléchir') || lower.includes('plus tard')) objections.push('Besoin de réflexion');
+        if (lower.includes('pas le moment') || lower.includes('timing')) objections.push('Pas le bon moment');
+        if (lower.includes('déjà') || lower.includes('formé')) objections.push('Déjà formé');
+        if (lower.includes('concurrent') || lower.includes('autre')) objections.push('Concurrence');
+
+        // Buying signals
+        const buyingSignals: string[] = [];
+        if (lower.includes('quand') || lower.includes('date')) buyingSignals.push('Question sur le timing');
+        if (lower.includes('comment') || lower.includes('financement') || lower.includes('cpf')) buyingSignals.push('Question financement');
+        if (lower.includes('programme') || lower.includes('contenu')) buyingSignals.push('Intérêt pour le contenu');
+
+        return {
+            sentiment,
+            objections,
+            summary: notes.substring(0, 100) + (notes.length > 100 ? '...' : ''),
+            keyPoints: [],
+            buyingSignals
+        };
+    }
 }

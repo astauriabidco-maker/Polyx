@@ -53,6 +53,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet, show: hasPermission('canEditUsers') },
         { name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit, show: hasPermission('canEditUsers') },
         { name: 'Intégrations API', href: '/app/settings/integrations', icon: Settings2, show: hasPermission('canEditUsers') },
+        { name: 'Marketing Automation', href: '/app/settings/marketing', icon: Zap, show: hasPermission('canEditUsers') },
     ];
 
 

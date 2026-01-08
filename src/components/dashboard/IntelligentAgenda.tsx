@@ -19,20 +19,32 @@ import {
     List,
     Grid3X3,
     BarChart3,
-    Filter
+    Bell,
+    Settings,
+    Globe,
+    MapPin,
+    Map
 } from 'lucide-react';
 import {
     format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay,
-    startOfMonth, endOfMonth, addMonths, subMonths, getDay, isSameMonth,
-    setHours, setMinutes
+    startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth,
+    setHours, setMinutes, subWeeks, addWeeks, subDays
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { getAgendaEventsAction, getAgencyCollaboratorsAction, createAppointmentAction, linkGoogleCalendarAction } from '@/application/actions/agenda.actions';
+import dynamic from 'next/dynamic';
+import { getAgendaEventsAction, getAgencyCollaboratorsAction, createAppointmentAction, linkGoogleCalendarAction, getOrganizationCollaboratorsAction, scheduleReminderAction } from '@/application/actions/agenda.actions';
 import { useAuthStore } from '@/application/store/auth-store';
+
+const AgendaMap = dynamic(() => import('@/components/agenda/AgendaMap'), { ssr: false });
+const EventDetailModal = dynamic(() => import('@/components/agenda/EventDetailModal').then(mod => mod.EventDetailModal), { ssr: false });
+const AvailabilityManager = dynamic(() => import('@/components/agenda/AvailabilityManager').then(mod => mod.AvailabilityManager), { ssr: false });
+const AgendaStatsModal = dynamic(() => import('@/components/agenda/AgendaStatsModal').then(mod => mod.AgendaStatsModal), { ssr: false });
 
 export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, agencyId: string }) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'week' | 'month'>('month');
+    const [showMap, setShowMap] = useState(false); // Map View Toggle
+    const [showStatsModal, setShowStatsModal] = useState(false);
     const [events, setEvents] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -51,19 +63,26 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
     const [bookingDuration, setBookingDuration] = useState('45');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // NEW: Event Detail Modal & Reminder
+    const [selectedEvent, setSelectedEvent] = useState<any>(null);
+    const [sendReminder, setSendReminder] = useState(false);
+    const [reminderHours, setReminderHours] = useState(24);
+    const [showAvailability, setShowAvailability] = useState(false);
+    const { user } = useAuthStore();
+
     useEffect(() => {
         async function load() {
             setIsLoading(true);
             const agencyFilter = selectedAgencyFilter === 'ALL' ? undefined : selectedAgencyFilter;
             const userFilter = selectedUserFilter === 'ALL' ? undefined : selectedUserFilter;
 
-            // If agencyId prop is provided (e.g. user is restricted), use it. 
-            // Otherwise use the filter value if set. If neither, fetch all.
             const effectiveAgencyId = agencyId || agencyFilter;
 
             const [eventsRes, colabsRes] = await Promise.all([
                 getAgendaEventsAction(orgId, effectiveAgencyId, userFilter),
-                getAgencyCollaboratorsAction(effectiveAgencyId || '') // Fetch collaborators for filter context
+                effectiveAgencyId
+                    ? getAgencyCollaboratorsAction(effectiveAgencyId)
+                    : getOrganizationCollaboratorsAction(orgId)
             ]);
 
             if (eventsRes.success) setEvents(eventsRes.data || []);
@@ -71,7 +90,7 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
             setIsLoading(false);
         }
         load();
-    }, [orgId, agencyId, selectedAgencyFilter, selectedUserFilter, currentDate]); // Reload when filters change
+    }, [orgId, agencyId, selectedAgencyFilter, selectedUserFilter, currentDate]);
 
     // --- VIEW CALCULATIONS ---
     const weekDays = eachDayOfInterval({
@@ -122,13 +141,31 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
         });
 
         if (res.success) {
+            // Schedule reminder if enabled
+            if (sendReminder && res.data?.id) {
+                await scheduleReminderAction(res.data.id, 'sms', reminderHours);
+            }
             setEvents([...events, res.data]);
             setIsBookingOpen(false);
             setBookingTitle('');
+            setSendReminder(false);
         } else {
             alert(res.error);
         }
         setIsSubmitting(false);
+    };
+
+    const handleEventClick = (event: any, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedEvent(event);
+    };
+
+    const handleRefresh = async () => {
+        setIsLoading(true);
+        const res = await getAgendaEventsAction(orgId, agencyId || undefined, selectedUserFilter === 'ALL' ? undefined : selectedUserFilter);
+        if (res.success) setEvents(res.data || []);
+        setIsLoading(false);
+        setSelectedEvent(null);
     };
 
     const getEventsForDay = (day: Date) => events.filter(e => isSameDay(new Date(e.start), day));
@@ -148,22 +185,60 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            className={`rounded-xl font-bold ${showMap ? 'bg-indigo-600 text-white' : 'border-slate-200 text-slate-600'}`}
+                            onClick={() => setShowMap(!showMap)}
+                        >
+                            <Map size={18} className="mr-2" /> {showMap ? 'Vue Calendrier' : 'Vue Carte'}
+                        </Button>
                         {/* Filter: Commercial */}
-                        <Select value={selectedUserFilter} onValueChange={setSelectedUserFilter}>
+                        <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                             <SelectTrigger className="w-[200px] rounded-xl font-bold bg-white border-slate-200">
-                                <UserIcon size={16} className="mr-2 text-slate-400" />
-                                <SelectValue placeholder="Tous les commerciaux" />
+                                <SelectValue placeholder="Tous les collaborateurs" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="ALL" className="font-bold text-slate-500">Tous les commerciaux</SelectItem>
-                                {collaborators.map(c => (
-                                    <SelectItem key={c.id} value={c.id} className="font-bold">{c.firstName} {c.lastName}</SelectItem>
+                                <SelectItem value="ALL">Tous les collaborateurs</SelectItem>
+                                {collaborators.map(u => (
+                                    <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
 
-                        <Button variant="outline" className="rounded-xl border-slate-200 text-slate-600 font-bold">
+                        <Button
+                            variant="outline"
+                            className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                            onClick={() => setShowStatsModal(true)}
+                        >
                             <BarChart3 size={18} className="mr-2" /> Analyser
+                        </Button>
+
+                        <AgendaStatsModal
+                            isOpen={showStatsModal}
+                            onClose={() => setShowStatsModal(false)}
+                            orgId={orgId!}
+                        />
+
+                        <Button
+                            variant="outline"
+                            className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                            onClick={() => setShowAvailability(true)}
+                        >
+                            <Settings size={18} className="mr-2" /> Disponibilités
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                            onClick={() => {
+                                if (typeof window !== 'undefined' && user) {
+                                    const url = `${window.location.origin}/book/${user.id}`;
+                                    navigator.clipboard.writeText(url);
+                                    alert("Lien de réservation copié : " + url);
+                                }
+                            }}
+                        >
+                            <Globe size={18} className="mr-2" /> Lien Public
                         </Button>
 
                         <Button
@@ -243,7 +318,11 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                                     </CardHeader>
                                     <CardContent className="p-2 space-y-2 min-h-[250px]">
                                         {getEventsForDay(day).map(event => (
-                                            <div key={event.id} className="p-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs group cursor-pointer hover:bg-white transition-colors">
+                                            <div
+                                                key={event.id}
+                                                onClick={(e) => handleEventClick(event, e)}
+                                                className="p-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs group cursor-pointer hover:bg-white transition-colors"
+                                            >
                                                 <div className="flex justify-between items-center mb-1">
                                                     <Badge className="text-[8px] bg-indigo-100 text-indigo-600 border-0 font-bold">{event.type}</Badge>
                                                     <span className="text-[10px] font-bold text-slate-400">{format(new Date(event.start), 'HH:mm')}</span>
@@ -299,7 +378,11 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                                             </div>
                                             <div className="space-y-1.5">
                                                 {dayEvents.slice(0, 3).map(event => (
-                                                    <div key={event.id} className="flex gap-1 items-center">
+                                                    <div
+                                                        key={event.id}
+                                                        onClick={(e) => handleEventClick(event, e)}
+                                                        className="flex gap-1 items-center hover:bg-white p-1 rounded cursor-pointer"
+                                                    >
                                                         <div className={`w-1 h-4 rounded-full ${event.type === 'MEETING' ? 'bg-amber-400' : 'bg-indigo-400'}`}></div>
                                                         <div className="flex-1 min-w-0">
                                                             <p className="text-[10px] font-bold text-slate-700 truncate leading-none">{event.title}</p>
@@ -395,6 +478,36 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Reminder Toggle */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Bell size={16} className="text-amber-600" />
+                                    <span className="text-sm font-bold text-amber-700">Envoyer un rappel SMS</span>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={sendReminder}
+                                    onChange={(e) => setSendReminder(e.target.checked)}
+                                    className="w-5 h-5 rounded accent-amber-500"
+                                />
+                            </div>
+                            {sendReminder && (
+                                <div className="mt-2 flex items-center gap-2">
+                                    <span className="text-xs text-amber-600">Délai :</span>
+                                    <select
+                                        value={reminderHours}
+                                        onChange={(e) => setReminderHours(Number(e.target.value))}
+                                        className="border border-amber-200 rounded-lg px-2 py-1 text-xs bg-white"
+                                    >
+                                        <option value={1}>1h avant</option>
+                                        <option value={24}>24h avant</option>
+                                        <option value={48}>48h avant</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <DialogFooter className="mt-6">
@@ -403,6 +516,22 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                             Confirmer le Rendez-vous
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Event Detail Modal */}
+            {selectedEvent && (
+                <EventDetailModal
+                    event={selectedEvent}
+                    onClose={() => setSelectedEvent(null)}
+                    onUpdate={handleRefresh}
+                />
+            )}
+
+            {/* Availability Manager Dialog */}
+            <Dialog open={showAvailability} onOpenChange={setShowAvailability}>
+                <DialogContent className="sm:max-w-xl bg-white rounded-3xl p-0 overflow-hidden">
+                    {user && <AvailabilityManager userId={user.id} />}
                 </DialogContent>
             </Dialog>
         </div>

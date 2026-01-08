@@ -29,9 +29,13 @@ interface KanbanBoardProps {
     leads: Lead[];
     onLeadClick?: (lead: Lead) => void;
     onLeadUpdate?: () => void;
+    selectedIds?: string[];
+    onToggleSelect?: (id: string, multi?: boolean) => void;
+    groupBy?: string;
+    allLeads?: Lead[]; // Optim for filtering
 }
 
-export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate }: KanbanBoardProps) {
+export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate, selectedIds, onToggleSelect }: KanbanBoardProps) {
     const [columns, setColumns] = useState<Record<string, Lead[]>>({});
 
     useEffect(() => {
@@ -73,12 +77,12 @@ export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate }: Kanban
         <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-4 overflow-x-auto h-full pb-2">
                 {PIPELINE_STAGES.map((stage) => (
-                    <div key={stage.id} className="flex-shrink-0 w-80 flex flex-col h-full max-h-full bg-slate-100/50 rounded-xl border border-slate-200">
+                    <div key={stage.id} className="flex-shrink-0 w-80 flex flex-col h-full max-h-full bg-slate-950 rounded-xl border border-slate-800/50">
                         {/* Column Header */}
-                        <div className="flex items-center gap-2 p-3 border-b border-slate-200 bg-white/50 backdrop-blur-sm rounded-t-xl shrink-0">
+                        <div className="flex items-center gap-2 p-3 border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm rounded-t-xl shrink-0">
                             <div className={`h-3 w-3 rounded-full ${stage.color}`} />
-                            <span className="font-bold text-slate-700 text-sm">{stage.label}</span>
-                            <span className="ml-auto text-xs font-medium text-slate-500 bg-slate-200/50 px-2 py-0.5 rounded-full">
+                            <span className="font-bold text-slate-300 text-sm">{stage.label}</span>
+                            <span className="ml-auto text-xs font-medium text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
                                 {columns[stage.id]?.length || 0}
                             </span>
                         </div>
@@ -90,9 +94,9 @@ export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate }: Kanban
                                     ref={provided.innerRef}
                                     {...provided.droppableProps}
                                     className={`
-                                        flex-1 overflow-y-auto p-2 min-h-0
+                                        flex-1 overflow-y-auto p-2 min-h-0 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent
                                         ${snapshot.isDraggingOver
-                                            ? 'bg-indigo-50/50'
+                                            ? 'bg-slate-800/50'
                                             : ''
                                         }
                                     `}
@@ -106,22 +110,33 @@ export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate }: Kanban
                                                     {...provided.dragHandleProps}
                                                     onClick={() => onLeadClick?.(lead)}
                                                     className={`
-                                                        bg-white rounded-lg p-3 mb-2 border border-slate-200 shadow-sm
-                                                        hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all
-                                                        ${snapshot.isDragging ? 'shadow-lg ring-2 ring-indigo-300 z-50' : ''}
+                                                        bg-slate-900 rounded-lg p-3 mb-2 border border-slate-800 shadow-sm
+                                                        hover:border-indigo-500/50 hover:bg-slate-800 cursor-pointer transition-all
+                                                        ${selectedIds?.includes(lead.id) ? 'ring-2 ring-indigo-500 border-indigo-500 bg-slate-800' : ''}
+                                                        ${snapshot.isDragging ? 'shadow-lg ring-2 ring-indigo-500 z-50 bg-slate-800' : ''}
                                                     `}
                                                 >
+                                                    {/* Selection Checkbox Overlay (Hover only) */}
+                                                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {onToggleSelect && (
+                                                            <div
+                                                                className={`w-4 h-4 rounded border border-slate-600 ${selectedIds?.includes(lead.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-800'}`}
+                                                                onClick={(e) => { e.stopPropagation(); onToggleSelect(lead.id); }}
+                                                            />
+                                                        )}
+                                                    </div>
+
                                                     {/* Lead Name */}
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div className="flex items-center gap-2 overflow-hidden">
-                                                            <div className="shrink-0 h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                                                    <div className="flex justify-between items-start mb-2 relative group">
+                                                        <div className="flex items-center gap-2 overflow-hidden w-full">
+                                                            <div className="shrink-0 h-8 w-8 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center text-xs font-bold">
                                                                 {lead.firstName[0]}{lead.lastName[0]}
                                                             </div>
-                                                            <div className="min-w-0">
-                                                                <p className="font-semibold text-slate-900 text-sm truncate">
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="font-semibold text-slate-200 text-sm truncate">
                                                                     {lead.firstName} {lead.lastName}
                                                                 </p>
-                                                                <p className="text-[10px] text-slate-400 truncate">
+                                                                <p className="text-[10px] text-slate-500 truncate">
                                                                     {lead.source || 'N/A'}
                                                                 </p>
                                                             </div>
@@ -130,28 +145,26 @@ export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate }: Kanban
 
                                                     {/* Badges Row */}
                                                     <div className="flex flex-wrap gap-1 mb-2">
-                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                                            {lead.status}
-                                                        </span>
                                                         {lead.city && (
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center gap-1">
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
                                                                 <MapPin size={8} /> {lead.city}
                                                             </span>
                                                         )}
                                                     </div>
 
                                                     {/* Footer Info */}
-                                                    <div className="flex items-center justify-between text-xs text-slate-400 mt-2 pt-2 border-t border-slate-50">
+                                                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-800">
                                                         <div className="flex items-center gap-1">
                                                             <Phone size={10} />
                                                             <span className="font-mono">{lead.phone}</span>
                                                         </div>
-                                                        {/* Optional Debug: Date */}
-                                                        {(lead as any).responseDate &&
-                                                            <span className="text-[9px]">
-                                                                {new Date((lead as any).responseDate).toLocaleDateString()}
-                                                            </span>
-                                                        }
+                                                        {/* Score Indicator */}
+                                                        {(lead as any).score && (
+                                                            <div className="flex items-center gap-1">
+                                                                <div className={`w-1.5 h-1.5 rounded-full ${(lead as any).score > 70 ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                                                <span className="font-mono">{(lead as any).score}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}

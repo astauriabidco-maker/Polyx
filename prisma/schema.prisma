@@ -43,6 +43,13 @@ model User {
   clientCompanyId String?
   clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id])
 
+  // Gamification
+  gamificationScore Int @default(0)
+  gamificationLevel Int @default(1)
+  achievements      UserAchievement[]
+  challenges        ChallengeParticipant[]
+
+
   googleRefreshToken String? // For Calendar Sync
   
   createdAt DateTime @default(now())
@@ -59,6 +66,16 @@ model Organisation {
   nda      String? // Numéro de Déclaration d'Activité
   qualiopi Boolean @default(false)
   isActive Boolean @default(true)
+
+  // Lifecycle & Validation
+  status        String    @default("PENDING") // PENDING, ACTIVE, SUSPENDED, REJECTED
+  activatedAt   DateTime?
+  activatedById String?   // Super Admin who validated
+  rejectionNote String?   // Reason if rejected
+
+  // Primary Admin Contact (for initial invitation)
+  primaryContactEmail String?
+  primaryContactName  String?
 
   // Address
   street  String?
@@ -113,10 +130,58 @@ model Organisation {
   // Wallet & Credits
   wallet              Wallet?
 
+  // Organisation Groups (Multi-OF Networks)
+  groupMemberships    OrganisationGroupMember[]
+
+  // Nurturing & Automation
+  nurturingSequences NurturingSequence[]
+  
+  // Gamification
+  challenges         Challenge[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([status])
   @@map("organisations")
+}
+
+// ============================================
+// ORGANISATION GROUPS (Multi-OF Networks)
+// ============================================
+
+model OrganisationGroup {
+  id          String @id @default(cuid())
+  name        String // Ex: "Groupe FormaPro", "Réseau Excellence"
+  description String?
+  logo        String?
+  isActive    Boolean @default(true)
+
+  // Owner/Creator
+  createdById String?
+
+  // Members
+  members     OrganisationGroupMember[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("organisation_groups")
+}
+
+model OrganisationGroupMember {
+  id             String @id @default(cuid())
+  groupId        String
+  organisationId String
+  role           String @default("MEMBER") // OWNER, ADMIN, MEMBER
+
+  group          OrganisationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  organisation   Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  joinedAt       DateTime @default(now())
+
+  @@unique([groupId, organisationId])
+  @@map("organisation_group_members")
 }
 
 // ============================================
@@ -677,6 +742,8 @@ model Lead {
   activities   LeadActivity[]
   calls        Call[]
   calendarEvents CalendarEvent[]
+  nurturingTasks NurturingTask[]
+  nurturingEnrollments NurturingEnrollment[]
   learner      Learner? // This is the reverse relation from Learner.leadId
 
   createdAt DateTime @default(now())
@@ -723,7 +790,12 @@ model Call {
   callerId String // Commercial qui a appelé
   caller   User   @relation(fields: [callerId], references: [id])
 
-  createdAt DateTime @default(now())
+  recordingUrl String? // URL vers l'enregistrement audio
+  
+  // AI Analysis Results
+  aiAnalysis Json? // { sentiment, objections, summary, keyPoints, analyzedAt }
+  
+  createdAt    DateTime @default(now())
 
   @@index([leadId])
   @@index([callerId])
@@ -823,6 +895,10 @@ model Agency {
   
   isActive       Boolean @default(true)
   isExamCenter   Boolean @default(false)
+
+  // Distribution Configuration
+  distributionMode   DistributionMode @default(ROUND_ROBIN)
+  distributionConfig Json?
 
   leads          Lead[]
   learners       Learner[]
@@ -956,6 +1032,17 @@ model IntegrationConfig {
   twilioAuthToken        String?  // Encrypted
   twilioWhatsappNumber   String?  // Encrypted
   
+  // Voice & Recording
+  voiceEnabled           Boolean  @default(false)
+  recordingEnabled       Boolean  @default(false)
+  voiceLastTestedAt      DateTime?
+  voiceTestStatus        String?  // 'success' | 'failed' | null
+
+  voiceProvider          String?  // 'TWILIO' | 'AIRCALL' | 'RINGOVER' | 'RINGCENTRAL'
+  voiceConfig            Json?    // Provider-specific credentials (encrypted or plain)
+
+
+  
   // Meta Cloud API Credentials (AES-256 Encrypted)
   metaPhoneNumberId      String?  // Encrypted
   metaAccessToken        String?  // Encrypted
@@ -1025,6 +1112,11 @@ model IntegrationConfig {
   aiModel                String?  // e.g., 'gemini-1.5-flash', 'gpt-4o-mini'
   aiLastTestedAt         DateTime?
   aiTestStatus           String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // WEBHOOKS INTEGRATION (Inbound)
+  // ═══════════════════════════════════════════════════════════
+  webhookSecret          String?  // Secret token for /api/webhooks/leads validation
 
   // ═══════════════════════════════════════════════════════════
   // LMS INTEGRATION (Moodle / 360Learning)
@@ -1613,4 +1705,181 @@ model WalletTransaction {
   createdAt       DateTime  @default(now())
 
   @@map("wallet_transactions")
+}
+enum DistributionMode {
+  ROUND_ROBIN
+  LOAD_BALANCED
+  SKILL_BASED
+}// ============================================
+// NURTURING & AUTOMATION
+// ============================================
+
+model NurturingSequence {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  isActive       Boolean @default(true)
+  
+  steps          NurturingStep[]
+  enrollments    NurturingEnrollment[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("nurturing_sequences")
+}
+
+model NurturingStep {
+  id             String @id @default(cuid())
+  sequenceId     String
+  sequence       NurturingSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  
+  order          Int
+  type           String // SMS, EMAIL
+  channel        String @default("WHATSAPP") // WHATSAPP, SMS, EMAIL
+  
+  delayInHours   Int @default(0) // Delay from previous step or enrollment start
+  
+  subject        String? // For email
+  content        String // Template content
+  
+  tasks          NurturingTask[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("nurturing_steps")
+}
+
+model NurturingEnrollment {
+  id             String @id @default(cuid())
+  leadId         String
+  lead           Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  sequenceId     String
+  sequence       NurturingSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  
+  status         String @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  
+  tasks          NurturingTask[]
+  
+  enrolledAt     DateTime @default(now())
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([leadId, sequenceId, status])
+  @@map("nurturing_enrollments")
+}
+
+model NurturingTask {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  organisationId String
+  
+  enrollmentId   String?
+  enrollment     NurturingEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  
+  stepId         String?
+  step           NurturingStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  type           String   @default("SMS") // SMS, EMAIL
+  channel        String   @default("WHATSAPP") // WHATSAPP, SMS, EMAIL
+  
+  scheduledAt    DateTime
+  executedAt     DateTime?
+  status         String   @default("PENDING") // PENDING, EXECUTED, CANCELLED, FAILED
+  
+  content        String
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([status, scheduledAt])
+  @@map("nurturing_tasks")
+}
+
+// ============================================
+// GAMIFICATION SYSTEM
+// ============================================
+
+model Achievement {
+  id          String   @id @default(cuid())
+  slug        String   @unique // ex: "first_deal", "100_calls"
+  name        String
+  description String?
+  icon        String?  // Lucide icon name or emoji
+  points      Int      @default(0)
+  
+  // Logic
+  category    String   // CALLS, DEALS, STREAK, QUALITY
+  threshold   Int      // Value to reach (e.g. 100)
+  
+  userAchievements UserAchievement[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  
+  unlockedAt    DateTime @default(now())
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Challenge {
+  id             String   @id @default(cuid())
+  organisationId String
+  
+  title       String
+  description String?
+  type        String   // INDIVIDUAL, TEAM
+  metric      String   // CALLS_COUNT, DEALS_VALUE, APPOINTMENTS
+  target      Float
+  
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  
+  participants ChallengeParticipant[]
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("challenges")
+}
+
+model ChallengeParticipant {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  
+  score       Float    @default(0)
+  rank        Int?
+  
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([challengeId, userId])
+  @@map("challenge_participants")
 }

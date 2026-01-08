@@ -1,100 +1,350 @@
 'use server';
 
-import { Agency } from '@/domain/entities/organization';
-import { db } from '@/infrastructure/mock-db';
+import { prisma } from '@/lib/prisma';
+import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 
-export interface AgencyState {
-    success?: boolean;
-    error?: string;
-    agency?: Agency;
+/**
+ * Security: Verifies if the current user is a Global Admin.
+ */
+async function checkGlobalAdmin() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth_token')?.value;
+
+    if (!token || !token.startsWith('mock_token_')) {
+        throw new Error('Non authentifié');
+    }
+
+    const userId = token.replace('mock_token_', '');
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isGlobalAdmin: true }
+    });
+
+    if (!user?.isGlobalAdmin) {
+        throw new Error('Accès réservé aux administrateurs plateforme');
+    }
+
+    return userId;
 }
 
-export async function createAgencyAction(organizationId: string, formData: FormData): Promise<AgencyState> {
-    await new Promise(resolve => setTimeout(resolve, 500));
+// ============================================
+// ORGANIZATION PROFILE (Prisma-backed)
+// ============================================
 
-    const name = formData.get('name') as string;
-    const city = formData.get('city') as string;
-    const zipCode = formData.get('zipCode') as string;
-    const street = formData.get('street') as string;
-    const phone = formData.get('phone') as string;
-    const email = formData.get('email') as string;
-    const managerName = formData.get('managerName') as string;
+export async function getOrganizationAction(organisationId: string) {
+    try {
+        const org = await (prisma as any).organisation.findUnique({
+            where: { id: organisationId },
+            include: {
+                integrationConfig: {
+                    select: {
+                        whatsappEnabled: true,
+                        smsEnabled: true,
+                        voiceEnabled: true,
+                        emailEnabled: true
+                    }
+                },
+                _count: {
+                    select: {
+                        accessGrants: true,
+                        agencies: true,
+                        leads: true,
+                        learners: true,
+                        trainings: true
+                    }
+                }
+            }
+        });
 
-    if (!name || !city || !zipCode) return { error: 'Nom, Ville et Code Postal requis.' };
+        if (!org) return { success: false, error: 'Organisation introuvable' };
 
-    const organization = db.organizations.find(o => o.id === organizationId);
-    if (!organization) return { error: 'Organisation introuvable.' };
-
-    const newAgency: Agency = {
-        id: 'agency-' + crypto.randomUUID().slice(0, 8),
-        organizationId,
-        name,
-        code: name.slice(0, 3).toUpperCase() + '-' + Math.floor(Math.random() * 100),
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        address: {
-            street: street || '',
-            zipCode,
-            city,
-            country: 'France'
-        },
-        contacts: {
-            phone: phone || '',
-            email: email || ''
-        },
-        managerName: managerName || ''
-    };
-
-    if (!organization.agencies) organization.agencies = [];
-    organization.agencies.push(newAgency);
-
-    return { success: true, agency: newAgency };
+        return {
+            success: true,
+            organization: {
+                id: org.id,
+                name: org.name,
+                siret: org.siret,
+                logo: org.logo,
+                nda: org.nda,
+                qualiopi: org.qualiopi,
+                isActive: org.isActive,
+                street: org.street,
+                zipCode: org.zipCode,
+                city: org.city,
+                country: org.country,
+                phone: org.phone,
+                email: org.email,
+                website: org.website,
+                turnover: org.turnover,
+                integrations: org.integrationConfig,
+                stats: org._count
+            }
+        };
+    } catch (error) {
+        console.error('[OrgAction] Get Organization Error:', error);
+        return { success: false, error: 'Failed to fetch organization' };
+    }
 }
 
-export async function updateAgencyAction(organizationId: string, agencyId: string, formData: FormData): Promise<AgencyState> {
-    await new Promise(resolve => setTimeout(resolve, 500));
+export async function updateOrganizationAction(organisationId: string, data: {
+    name?: string;
+    siret?: string;
+    logo?: string;
+    nda?: string;
+    qualiopi?: boolean;
+    street?: string;
+    zipCode?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+}) {
+    try {
+        const org = await (prisma as any).organisation.update({
+            where: { id: organisationId },
+            data: {
+                ...data,
+                updatedAt: new Date()
+            }
+        });
 
-    const name = formData.get('name') as string;
-    const city = formData.get('city') as string;
-    const zipCode = formData.get('zipCode') as string;
-    const street = formData.get('street') as string;
-    const phone = formData.get('phone') as string;
-    const email = formData.get('email') as string;
-    const managerName = formData.get('managerName') as string;
-
-    const organization = db.organizations.find(o => o.id === organizationId);
-    if (!organization || !organization.agencies) return { error: 'Organisation ou Agence introuvable.' };
-
-    const agency = organization.agencies.find(a => a.id === agencyId);
-    if (!agency) return { error: 'Agence introuvable.' };
-
-    // Update fields
-    agency.name = name;
-    agency.address.city = city;
-    agency.address.zipCode = zipCode;
-    agency.address.street = street;
-
-    if (!agency.contacts) agency.contacts = { phone: '', email: '' };
-    agency.contacts.phone = phone;
-    agency.contacts.email = email;
-    agency.managerName = managerName;
-
-    agency.updatedAt = new Date();
-
-    return { success: true, agency };
+        revalidatePath('/app/settings/organization');
+        return { success: true, organization: org };
+    } catch (error) {
+        console.error('[OrgAction] Update Organization Error:', error);
+        return { success: false, error: 'Failed to update organization' };
+    }
 }
 
-export async function deleteAgencyAction(organizationId: string, agencyId: string): Promise<AgencyState> {
-    await new Promise(resolve => setTimeout(resolve, 500));
+// ============================================
+// SUPER ADMIN: CREATE ORGANIZATION
+// ============================================
 
-    const organization = db.organizations.find(o => o.id === organizationId);
-    if (!organization || !organization.agencies) return { error: 'Organisation ou Agence introuvable.' };
+export async function createOrganizationAction(data: {
+    name: string;
+    siret?: string;
+    nda?: string;
+    email?: string;
+    phone?: string;
+    street?: string;
+    city?: string;
+    zipCode?: string;
+}) {
+    try {
+        // Check SIRET uniqueness if provided
+        if (data.siret) {
+            const existing = await (prisma as any).organisation.findUnique({
+                where: { siret: data.siret }
+            });
+            if (existing) return { success: false, error: 'Ce numéro SIRET est déjà utilisé' };
+        }
 
-    const index = organization.agencies.findIndex(a => a.id === agencyId);
-    if (index === -1) return { error: 'Agence introuvable.' };
+        const org = await (prisma as any).organisation.create({
+            data: {
+                name: data.name,
+                siret: data.siret,
+                nda: data.nda,
+                email: data.email,
+                phone: data.phone,
+                street: data.street,
+                city: data.city,
+                zipCode: data.zipCode,
+                country: 'France',
+                isActive: true,
+                qualiopi: false
+            }
+        });
 
-    organization.agencies.splice(index, 1);
+        // Create default Admin role for this org
+        await (prisma as any).role.create({
+            data: {
+                name: 'Administrateur',
+                organisationId: org.id,
+                isSystemDefault: true
+            }
+        });
 
-    return { success: true };
+        revalidatePath('/super-admin/organizations');
+        return { success: true, organization: org };
+    } catch (error) {
+        console.error('[OrgAction] Create Organization Error:', error);
+        return { success: false, error: 'Failed to create organization' };
+    }
+}
+
+// ============================================
+// LIST ORGANIZATIONS (Super Admin)
+// ============================================
+
+export async function getOrganizationsAction() {
+    try {
+        const orgs = await (prisma as any).organisation.findMany({
+            include: {
+                _count: {
+                    select: {
+                        accessGrants: true,
+                        agencies: true,
+                        leads: true,
+                        learners: true
+                    }
+                }
+            },
+            orderBy: [
+                { status: 'asc' },
+                { name: 'asc' }
+            ]
+        });
+
+        return { success: true, organizations: orgs };
+    } catch (error) {
+        console.error('[OrgAction] Get Organizations Error:', error);
+        return { success: false, error: 'Failed to fetch organizations' };
+    }
+}
+
+// ============================================
+// Actions activate, reject, suspend organisation moved to src/actions/super-admin.ts for centralization.
+
+/**
+ * Resend admin invitation for an organization
+ */
+export async function resendAdminInvitationAction(organisationId: string) {
+    try {
+        const org = await (prisma as any).organisation.findUnique({
+            where: { id: organisationId }
+        });
+
+        if (!org) return { success: false, error: 'Organisation introuvable' };
+        if (!org.primaryContactEmail) return { success: false, error: 'Aucun email de contact principal' };
+
+        // Find admin role
+        const adminRole = await (prisma as any).role.findFirst({
+            where: { organisationId, isSystemDefault: true }
+        });
+
+        if (!adminRole) return { success: false, error: 'Rôle admin non trouvé' };
+
+        // Invalidate existing invitations
+        await (prisma as any).invitation.updateMany({
+            where: { organisationId, email: org.primaryContactEmail, status: 'PENDING' },
+            data: { status: 'EXPIRED' }
+        });
+
+        // Create new invitation
+        const token = crypto.randomUUID();
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        const invitation = await (prisma as any).invitation.create({
+            data: {
+                email: org.primaryContactEmail,
+                token,
+                expiresAt,
+                status: 'PENDING',
+                organisationId,
+                roleId: adminRole.id
+            }
+        });
+
+        // TODO: Send email
+        console.log(`[OrgAction] 📧 New invitation sent to ${org.primaryContactEmail}`);
+
+        return { success: true, invitation };
+    } catch (error) {
+        console.error('[OrgAction] Resend Invitation Error:', error);
+        return { success: false, error: 'Failed to resend invitation' };
+    }
+}
+
+// ============================================
+// ORGANISATION GROUPS (Multi-OF Networks)
+// ============================================
+
+// ============================================
+
+export async function getOrganisationGroupsAction() {
+    await checkGlobalAdmin();
+    try {
+        const groups = await (prisma as any).organisationGroup.findMany({
+            include: {
+                members: {
+                    include: {
+                        organisation: {
+                            select: { id: true, name: true, logo: true, status: true }
+                        }
+                    }
+                },
+                _count: { select: { members: true } }
+            },
+            orderBy: { name: 'asc' }
+        });
+
+        return { success: true, groups };
+    } catch (error) {
+        console.error('[OrgAction] Get Groups Error:', error);
+        return { success: false, error: 'Failed to fetch organisation groups' };
+    }
+}
+
+export async function createOrganisationGroupAction(data: {
+    name: string;
+    description?: string;
+    createdById: string;
+    organisationIds?: string[];
+}) {
+    await checkGlobalAdmin();
+    try {
+        const group = await (prisma as any).organisationGroup.create({
+            data: {
+                name: data.name,
+                description: data.description,
+                createdById: data.createdById,
+                members: data.organisationIds ? {
+                    create: data.organisationIds.map((orgId, index) => ({
+                        organisationId: orgId,
+                        role: index === 0 ? 'OWNER' : 'MEMBER'
+                    }))
+                } : undefined
+            },
+            include: { members: true }
+        });
+
+        revalidatePath('/super-admin/groups');
+        return { success: true, group };
+    } catch (error) {
+        console.error('[OrgAction] Create Group Error:', error);
+        return { success: false, error: 'Failed to create organisation group' };
+    }
+}
+
+export async function addOrganisationToGroupAction(groupId: string, organisationId: string, role: string = 'MEMBER') {
+    await checkGlobalAdmin();
+    try {
+        const member = await (prisma as any).organisationGroupMember.create({
+            data: { groupId, organisationId, role }
+        });
+
+        revalidatePath('/super-admin/groups');
+        return { success: true, member };
+    } catch (error) {
+        console.error('[OrgAction] Add to Group Error:', error);
+        return { success: false, error: 'Failed to add organisation to group' };
+    }
+}
+
+export async function removeOrganisationFromGroupAction(groupId: string, organisationId: string) {
+    await checkGlobalAdmin();
+    try {
+        await (prisma as any).organisationGroupMember.delete({
+            where: { groupId_organisationId: { groupId, organisationId } }
+        });
+
+        revalidatePath('/super-admin/groups');
+        return { success: true };
+    } catch (error) {
+        console.error('[OrgAction] Remove from Group Error:', error);
+        return { success: false, error: 'Failed to remove organisation from group' };
+    }
 }

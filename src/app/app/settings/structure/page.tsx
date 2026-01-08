@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { getAgenciesAction, createAgencyAction, deleteAgencyAction, updateAgencyAction } from '@/application/actions/agency.actions';
 import { getFranchisesAction } from '@/application/actions/franchise.actions';
-import { MapPin, Plus, Building, User, Mail, Phone, Trash2, Edit3, Globe, Building2 } from 'lucide-react';
+import { MapPin, Plus, Building, User, Mail, Phone, Trash2, Edit3, Globe, Building2, TrendingUp, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
@@ -313,6 +313,40 @@ export default function StructureSettingsPage() {
                             Centre d'Examen Agréé
                             <span className="block text-[10px] text-blue-500 font-normal">Cette agence pourra être sélectionnée comme lieu d'examen.</span>
                         </label>
+                    </div>
+
+                    <div className="space-y-4 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <TrendingUp size={16} className="text-indigo-600" />
+                                <label className="text-sm font-bold text-indigo-900">Distribution des Leads (Smart)</label>
+                            </div>
+                            <Badge variant="outline" className="text-[9px] bg-white text-indigo-600 border-indigo-200">Recommandé</Badge>
+                        </div>
+
+                        <Select name="distributionMode" defaultValue={editingAgency?.distributionMode || "ROUND_ROBIN"}>
+                            <SelectTrigger className="bg-white border-indigo-200">
+                                <SelectValue placeholder="Choisir un mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ROUND_ROBIN">🔄 Circulaire (Round Robin)</SelectItem>
+                                <SelectItem value="LOAD_BALANCED">⚖️ Équilibrage de Charge (Libre)</SelectItem>
+                                <SelectItem value="SKILL_BASED">🎯 Par Compétences (Coming Soon)</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <div className="bg-white/60 rounded-lg p-3 border border-indigo-100/50 space-y-2">
+                            <div className="flex items-start gap-2">
+                                <Info size={14} className="text-indigo-500 mt-0.5" />
+                                <div className="text-[11px] text-slate-600 leading-relaxed">
+                                    <p className="font-bold text-indigo-900 mb-1">Guide de choix :</p>
+                                    <ul className="list-disc ml-4 space-y-1">
+                                        <li><span className="font-semibold">Circulaire</span> : Idéal pour les équipes où tout le monde traite le même volume. Plus "juste" mathématiquement sur une journée.</li>
+                                        <li><span className="font-semibold">Équilibrage</span> : Idéal si certains agents sont plus lents ou ont déjà beaucoup de dossiers. Évite de surcharger ceux qui sont déjà occupés.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">

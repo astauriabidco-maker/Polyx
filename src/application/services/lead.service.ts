@@ -67,9 +67,37 @@ export class LeadService {
     // --- Interaction Logic ---
 
     /**
+     * Advanced Weighted Scoring Engine
+     * Calculates score based on Source, Freshness, and Data Completeness.
+     */
+    static calculateScore(lead: Partial<Lead>): number {
+        let score = 30; // Base score
+
+        // 1. Source Weight (Premium Sources = +40/50 pts)
+        const premiumSources = ['facebook_ads', 'google_ads', 'landing_page', 'recommandation'];
+        if (lead.source && premiumSources.includes(lead.source.toLowerCase())) {
+            score += 40;
+        }
+
+        // 2. Data Completeness (+20 pts)
+        if (lead.email && (lead.phone || lead.mobile)) {
+            score += 20;
+        }
+
+        // 3. Freshness (+10 pts)
+        // If created in the last 2 hours (for new leads being scored)
+        const createdAt = lead.createdAt ? new Date(lead.createdAt).getTime() : Date.now();
+        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+        if (createdAt > twoHoursAgo) {
+            score += 10;
+        }
+
+        return Math.min(100, score);
+    }
+
+    /**
      * Injects a new lead into the system with routing rules.
-     * Rule 1: If responseDate < 30 days -> CRM (PROSPECT + NOUVEAU).
-     * Rule 2: If responseDate > 30 days -> PROSPECTION (PROSPECT).
+     * Calculates initial score and determines initial stage.
      */
     static injectLead(lead: Lead): Lead {
         const now = new Date();
@@ -78,14 +106,13 @@ export class LeadService {
         // All leads start as PROSPECT
         lead.status = LeadStatus.PROSPECT;
 
-        // Check "Freshness"
-        // If responseDate is recent (after 30 days ago) -> Fresh -> CRM
-        if (lead.responseDate && lead.responseDate > thirtyDaysAgo) {
-            lead.salesStage = SalesStage.NOUVEAU; // Mark for CRM
-            lead.score = 100; // Boost score
-        } else {
-            // No Sales Stage -> Prospection
-            // lead.salesStage = undefined;
+        // Calculate Score
+        lead.score = this.calculateScore(lead);
+
+        // Check Freshness for CRM vs Prospection
+        // CRM (Hot Leads): recent AND high score
+        if (lead.score > 75 || (lead.responseDate && lead.responseDate > thirtyDaysAgo)) {
+            lead.salesStage = SalesStage.NOUVEAU;
         }
 
         return lead;
@@ -202,6 +229,43 @@ export class LeadService {
         if (isProvisioned) return 'provisioned';
 
         return 'other';
+    }
+
+    /**
+     * "Smart Distribution" / "Load Balancing" Logic.
+     * Updates: 
+     * - Returns the userId of the candidate based on the distribution mode.
+     * - Modes: 'ROUND_ROBIN' (Circular), 'LOAD_BALANCED' (Lowest Score), 'SKILL_BASED' (Future).
+     */
+    static getBestCandidate(
+        candidates: { userId: string, loadScore: number, lastAssignedAt?: Date }[],
+        mode: 'ROUND_ROBIN' | 'LOAD_BALANCED' | 'SKILL_BASED' = 'LOAD_BALANCED'
+    ): string | null {
+        if (!candidates || candidates.length === 0) return null;
+
+        if (mode === 'LOAD_BALANCED') {
+            // Strategy: Lowest active leads (Standard Load Balancing)
+            // Sort by score ASC (lowest load first)
+            const sorted = [...candidates].sort((a, b) => a.loadScore - b.loadScore);
+            return sorted[0].userId;
+        }
+
+        if (mode === 'ROUND_ROBIN') {
+            // Strategy: Longest time since last assignment
+            // Requires tracking 'lastAssignedAt' or 'leadsToday'
+            // For now, simplify: we rely on 'leads assigned today' as the score for Round Robin, 
+            // OR if loadScore IS total active leads, Round Robin usually means "balanced count".
+            // True Round Robin requires sequence tracking. 
+            // Let's implement a "Fair Share" Round Robin using counts:
+            // The one with the LEAST assignments TODAY gets the next one.
+            // If loadScore represents "Leads assigned today", then sort by score ASC works same as Load Balanced but for a different metric.
+
+            // Assuming loadScore passed here is the metric relevant to the mode.
+            const sorted = [...candidates].sort((a, b) => a.loadScore - b.loadScore);
+            return sorted[0].userId;
+        }
+
+        return candidates[0].userId; // Fallback
     }
 
     static getScoringInsights(lead: Lead): { label: string, icon: string, type: 'positive' | 'neutral' | 'negative' }[] {

@@ -1,33 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LeadIngestionService } from '@/application/services/ingestion.service';
-import { ApiLeadRequest } from '@/domain/dtos/api-types';
+import { prisma } from '@/lib/prisma';
+import { LeadService } from '@/application/services/lead.service';
+import { LeadStatus } from '@/domain/entities/lead';
 
 export async function POST(req: NextRequest) {
-    // 1. Security Check
-    const apiKey = req.headers.get('x-api-key');
-    if (!LeadIngestionService.validateApiKey(apiKey)) {
-        return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
-    }
-
     try {
-        // 2. Payload Validation
-        const body = await req.json();
+        const { searchParams } = new URL(req.url);
+        const secret = searchParams.get('secret');
+        const orgId = searchParams.get('orgId');
 
-        // Ensure request is an array (batch) or single object converted to array
-        const leads: ApiLeadRequest[] = Array.isArray(body) ? body : [body];
-
-        if (leads.length === 0) {
-            return NextResponse.json({ error: 'Empty payload' }, { status: 400 });
+        if (!secret || !orgId) {
+            return NextResponse.json({ error: 'Missing secret or orgId' }, { status: 400 });
         }
 
-        // 3. Processing
-        const result = await LeadIngestionService.ingestBulk(leads);
+        // Validate Secret
+        const config = await prisma.integrationConfig.findFirst({
+            where: { organisationId: orgId }
+        });
 
-        // 4. Response
-        return NextResponse.json(result, { status: 201 });
+        if (!config || config.webhookSecret !== secret) {
+            return NextResponse.json({ error: 'Invalid secret or organization' }, { status: 401 });
+        }
+
+        // Parse Payload
+        const body = await req.json();
+
+        // Basic validation
+        if (!body.email && !body.phone) {
+            return NextResponse.json({ error: 'Data must contain at least email or phone' }, { status: 400 });
+        }
+
+        // Create Lead
+        // Map common fields from popular platforms (Zapier, Facebook, Google)
+        const leadData = {
+            firstName: body.firstName || body.first_name || body.prenom || 'Inconnu',
+            lastName: body.lastName || body.last_name || body.nom || 'Inconnu',
+            email: body.email || body.email_work || body.courriel || null,
+            phone: body.phone || body.phone_number || body.telephone || null,
+            source: body.source || body.platform || 'WEBHOOK',
+            customFields: {
+                ...body,
+                webhook_source: body.source || 'unknown',
+                webhook_received_at: new Date().toISOString()
+            }
+        };
+
+        // Use LeadService to handle logic (deduplication check is inside createLead potentially, strictly speaking LeadService.createLead is not exposed directly so we use prisma or action logic?)
+        // Let's use Prisma directly to be safe as actions are for client side.
+        // Or if LeadService has a method. Checked LeadService earlier, it has smart queue logic.
+        // Let's create a simple lead creation here.
+
+        // Check if lead exists (by email)
+        let lead = null;
+        if (leadData.email) {
+            lead = await prisma.lead.findFirst({
+                where: {
+                    organisationId: orgId,
+                    email: leadData.email
+                }
+            });
+        }
+
+        if (lead) {
+            console.log(`[Webhook] Lead already exists: ${lead.id}`);
+            // Optionally update or just log interaction?
+            // For now, let's just return success saying it exists
+            return NextResponse.json({ success: true, leadId: lead.id, message: 'Lead already exists, ignored' });
+        }
+
+        const newLead = await prisma.lead.create({
+            data: {
+                organisationId: orgId,
+                firstName: leadData.firstName,
+                lastName: leadData.lastName,
+                email: leadData.email,
+                phone: leadData.phone,
+                source: leadData.source,
+                status: LeadStatus.PROSPECT, // Default status
+                metadata: leadData.customFields
+            }
+        });
+
+        console.log(`[Webhook] Created new lead: ${newLead.id}`);
+
+        return NextResponse.json({ success: true, leadId: newLead.id });
 
     } catch (error: any) {
-        console.error('Webhook Error:', error);
+        console.error('[Webhook] Error processing request:', error);
         return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
     }
 }

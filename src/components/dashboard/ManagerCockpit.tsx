@@ -4,16 +4,27 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DollarSign, Users, Award, Zap } from 'lucide-react';
-import { getManagerMetricsAction } from '@/application/actions/metrics.actions';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { getManagerMetricsAction, getLeadQualityBySourceAction, getScriptPerformanceAction } from '@/application/actions/metrics.actions';
 
 export default function ManagerCockpit({ orgId }: { orgId: string }) {
     const [stats, setStats] = useState<any>(null);
+    const [sourceData, setSourceData] = useState<any[]>([]);
+    const [scriptData, setScriptData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         async function load() {
-            const res = await getManagerMetricsAction(orgId);
-            if (res.success) setStats(res);
+            const [metricsRes, sourceRes, scriptRes] = await Promise.all([
+                getManagerMetricsAction(orgId),
+                getLeadQualityBySourceAction(orgId),
+                getScriptPerformanceAction(orgId)
+            ]);
+
+            if (metricsRes.success) setStats(metricsRes);
+            if (sourceRes.success) setSourceData(sourceRes.data);
+            if (scriptRes.success) setScriptData(scriptRes.data);
+
             setIsLoading(false);
         }
         load();
@@ -63,11 +74,12 @@ export default function ManagerCockpit({ orgId }: { orgId: string }) {
                 />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Team Leaderboard */}
-                <Card className="border-slate-200 shadow-sm">
-                    <CardHeader className="border-b border-slate-100">
+                <Card className="col-span-2 border-slate-200 shadow-sm">
+                    <CardHeader className="border-b border-slate-100 flex flex-row items-center justify-between">
                         <CardTitle>Performance Équipe</CardTitle>
+                        <Button variant="outline" size="sm">Voir Détails</Button>
                     </CardHeader>
                     <CardContent className="p-0">
                         <table className="w-full text-left text-sm">
@@ -91,14 +103,53 @@ export default function ManagerCockpit({ orgId }: { orgId: string }) {
                     </CardContent>
                 </Card>
 
-                {/* API Flux Placeholder (Previously in DashboardPage) */}
-                <Card className="border-slate-200 border-dashed bg-slate-50/30 flex flex-col items-center justify-center p-8 text-center min-h-[300px]">
-                    <div className="h-16 w-16 bg-white rounded-full flex items-center justify-center border border-slate-200 mb-4 shadow-sm">
-                        <Zap size={32} className="text-slate-400" />
-                    </div>
-                    <h3 className="font-bold text-slate-900 text-lg">Flux API Entrant</h3>
-                    <p className="text-slate-500 max-w-xs mb-6">Le widget d'importation des leads API sera intégré ici pour la supervision technique.</p>
-                    <Button variant="outline">Voir les flux (Admin)</Button>
+                {/* Script Performance */}
+                <Card className="border-slate-200 shadow-sm">
+                    <CardHeader className="border-b border-slate-100">
+                        <CardTitle>Top Scripts</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        {scriptData.map((script: any, i: number) => (
+                            <div key={i} className="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                                <p className="font-bold text-slate-700 text-sm">{script.name}</p>
+                                <div className="flex justify-between items-end mt-1">
+                                    <span className="text-xs text-slate-400">{script.attempts} essais</span>
+                                    <span className={`text-sm font-black ${script.rate > 20 ? 'text-green-600' : 'text-amber-600'}`}>
+                                        {script.rate}% Conv.
+                                    </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                                    <div className={`h-full rounded-full ${script.rate > 20 ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${script.rate}%` }} />
+                                </div>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Source Quality Chart */}
+            <div className="grid grid-cols-1">
+                <Card className="border-slate-200 shadow-sm">
+                    <CardHeader className="border-b border-slate-100">
+                        <CardTitle>Qualité des Leads par Source</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={sourceData}>
+                                <XAxis dataKey="source" fontSize={12} tickLine={false} axisLine={false} />
+                                <YAxis fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    cursor={{ fill: '#f1f5f9' }}
+                                />
+                                <Bar dataKey="rate" radius={[4, 4, 0, 0]} name="Taux de Conv.">
+                                    {sourceData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.rate > 10 ? '#4f46e5' : '#94a3b8'} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </CardContent>
                 </Card>
             </div>
         </div>

@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/prisma';
 import { Lead, LeadWithOrg, LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { getAgencyWhereClause } from '@/lib/auth-utils';
+import { LeadService } from '@/application/services/lead.service';
+import { GamificationService, GamificationActivity } from '@/application/services/gamification.service';
 
 // Mimics a real DB query with latency
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -161,45 +163,54 @@ export async function getAgenciesAction(organisationId: string): Promise<{ succe
 
 export async function createManualLeadAction(leadData: Partial<Lead>, organizationId: string): Promise<{ success: boolean, lead?: Lead }> {
     try {
+        // 1. Prepare Lead with Domain Logic (Scoring + Initial Status)
+        const leadToInject = {
+            ...leadData,
+            organisationId: organizationId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            history: [],
+            callAttempts: 0
+        } as Lead;
+
+        const processedLead = LeadService.injectLead(leadToInject);
+
+        // 2. Automatic Distribution Trigger
+        // If score is high (> 75) AND lead is not manually assigned
+        if (processedLead.score > 75 && !processedLead.assignedUserId) {
+            const autoUserId = await assignLeadRoundRobinHelper(organizationId, processedLead.agencyId);
+            if (autoUserId) processedLead.assignedUserId = autoUserId;
+        }
+
+        // 3. Persist to DB
         const created: any = await (prisma as any).lead.create({
             data: {
                 organisationId: organizationId,
-                firstName: leadData.firstName || 'Inconnu',
-                lastName: leadData.lastName || 'Inconnu',
-                email: leadData.email || '',
-                phone: leadData.phone || '',
-                street: leadData.street || '',
-                zipCode: leadData.zipCode || '',
-                city: leadData.city || '',
-                status: LeadStatus.PROSPECT,
-                salesStage: SalesStage.NOUVEAU,
-
-                source: leadData.source as string, // Cast Enum
-
-                // Handle IDs safely
-                agencyId: leadData.agencyId || undefined,
-                examId: leadData.examId || undefined,
+                firstName: processedLead.firstName || 'Inconnu',
+                lastName: processedLead.lastName || 'Inconnu',
+                email: processedLead.email || '',
+                phone: processedLead.phone || '',
+                mobile: processedLead.mobile || '',
+                street: processedLead.street || '',
+                zipCode: processedLead.zipCode || '',
+                city: processedLead.city || '',
+                country: processedLead.country || 'France',
+                source: processedLead.source || 'Manual',
+                score: processedLead.score,
+                status: processedLead.status,
+                salesStage: processedLead.salesStage || null,
+                assignedUserId: processedLead.assignedUserId,
+                agencyId: processedLead.agencyId,
+                history: processedLead.history as any,
+                callAttempts: processedLead.callAttempts,
+                examId: processedLead.examId || undefined
             }
         });
 
-        const mapped: Lead = {
-            id: created.id,
-            organizationId: created.organisationId,
-            firstName: created.firstName,
-            lastName: created.lastName,
-            email: created.email,
-            phone: created.phone,
-            status: created.status as LeadStatus,
-            salesStage: created.salesStage as SalesStage,
-            history: [],
-            score: created.score,
-            source: created.source || 'autre',
-            callAttempts: created.callAttempts || 0,
-            createdAt: created.createdAt,
-            updatedAt: created.updatedAt
-        };
+        revalidatePath('/app/crm');
+        revalidatePath('/app/sales');
 
-        return { success: true, lead: mapped };
+        return { success: true, lead: created };
     } catch (e) {
         console.error("Create Lead Error:", e);
         return { success: false };
@@ -246,5 +257,314 @@ export async function refreshLeadScoreAction(leadId: string): Promise<{ success:
     } catch (e) {
         console.error("Refresh Lead Score Error:", e);
         return { success: false };
+    }
+}
+export async function logCallAction(data: {
+    leadId: string;
+    duration: number;
+    outcome: string;
+    notes?: string;
+    callerId: string;
+    recordingUrl?: string;
+}) {
+    try {
+        const call = await (prisma as any).call.create({
+            data: {
+                leadId: data.leadId,
+                duration: data.duration,
+                outcome: data.outcome,
+                notes: data.notes,
+                callerId: data.callerId,
+                recordingUrl: data.recordingUrl
+            }
+        });
+
+        // Also log as generic activity
+        await (prisma as any).leadActivity.create({
+            data: {
+                leadId: data.leadId,
+                type: 'CALL',
+                content: `Appel sortant (${Math.floor(data.duration / 60)}m ${data.duration % 60}s) - Résultat: ${data.outcome}`,
+                userId: data.callerId
+            }
+        });
+
+        // Gamification Hook
+        await GamificationService.trackActivity(data.callerId, GamificationActivity.CALL_MADE);
+
+        return { success: true, call };
+    } catch (error) {
+        console.error("Log Call Error:", error);
+        return { success: false };
+    }
+}
+
+export async function logActivityAction(data: {
+    leadId: string;
+    userId: string;
+    type: string;
+    content: string;
+    metadata?: any;
+}) {
+    try {
+        await (prisma as any).leadActivity.create({
+            data: {
+                leadId: data.leadId,
+                userId: data.userId,
+                type: data.type,
+                content: data.content,
+                // metadata: data.metadata // Ensure schema supports this if needed, for now we can stringify if required
+            }
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Log Activity Error:", error);
+        return { success: false };
+    }
+}
+// ============================================
+// MASS IMPORT (CSV)
+// ============================================
+
+export async function importLeadsAction(leads: any[], organisationId: string, mapping: any) {
+    try {
+        // 1. Validate inputs
+        if (!leads || leads.length === 0) return { success: false, error: 'Aucune donnée à importer' };
+
+        let successCount = 0;
+        let duplicateCount = 0;
+        let errorCount = 0;
+        const errors: any[] = [];
+
+        // 2. Prepare standardized leads
+        const leadsToProcess = leads.map((row, index) => {
+            const email = row[mapping.email]?.trim();
+            const phone = row[mapping.phone]?.replace(/\s/g, '').trim();
+
+            if (!email && !phone) return null;
+
+            const baseLead = {
+                organisationId,
+                firstName: row[mapping.firstName]?.trim() || 'Inconnu',
+                lastName: row[mapping.lastName]?.trim() || '',
+                email: email,
+                phone: phone,
+                source: mapping.defaultSource || 'IMPORT_CSV',
+                campaignId: mapping.campaignId || undefined,
+                agencyId: mapping.agencyId || undefined,
+                examId: mapping.examId || undefined,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                callAttempts: 0,
+                history: []
+            } as any;
+
+            // Apply Domain Logic (Scoring + Initial Status)
+            return {
+                ...LeadService.injectLead(baseLead),
+                originalRow: index + 1
+            };
+        }).filter((l: any): l is NonNullable<typeof l> => l !== null);
+
+        // [Auto-Assign Optimization] Pre-fetch candidates and their load
+        let candidates: { userId: string, loadScore: number }[] = [];
+        try {
+            const grants = await (prisma as any).userAccessGrant.findMany({
+                where: { organisationId },
+                include: { user: true }
+            });
+            // Filter candidates if needed (e.g. only Agents)
+            // For now take all users in org
+            const users = grants.map((g: any) => g.user);
+
+            candidates = await Promise.all(users.map(async (u: any) => {
+                const count = await (prisma as any).lead.count({
+                    where: {
+                        assignedUserId: u.id,
+                        status: { in: ['PROSPECT', 'PROSPECTION', 'ATTEMPTED', 'CONTACTED'] }
+                    }
+                });
+                return { userId: u.id, loadScore: count };
+            }));
+        } catch (e) {
+            console.warn("Auto-assign setup failed, continuing without assignment", e);
+        }
+
+        // 3. Process each lead
+        for (const lead of leadsToProcess) {
+            try {
+                // Check duplicate (by email)
+                if (lead.email) {
+                    const existing = await (prisma as any).lead.findFirst({
+                        where: { organisationId, email: lead.email }
+                    });
+                    if (existing) {
+                        duplicateCount++;
+                        continue;
+                    }
+                }
+
+                // Automatic Distribution Trigger (only if score is high)
+                if (lead.score > 75 && !lead.assignedUserId) {
+                    const bestUserId = LeadService.getBestCandidate(candidates);
+                    if (bestUserId) {
+                        lead.assignedUserId = bestUserId;
+                        // Update local load to maintain balance during this batch
+                        const cand = candidates.find(c => c.userId === bestUserId);
+                        if (cand) cand.loadScore++;
+                    }
+                }
+
+                await (prisma as any).lead.create({
+                    data: {
+                        organisationId: lead.organisationId,
+                        firstName: lead.firstName,
+                        lastName: lead.lastName,
+                        email: lead.email,
+                        phone: lead.phone,
+                        source: lead.source,
+                        campaignId: lead.campaignId,
+                        agencyId: lead.agencyId,
+                        examId: lead.examId,
+                        status: lead.status,
+                        salesStage: lead.salesStage || null,
+                        score: lead.score,
+                        assignedUserId: lead.assignedUserId,
+                        callAttempts: 0,
+                        history: lead.history as any
+                    }
+                });
+                successCount++;
+            } catch (err) {
+                console.error("Import Row Error:", err);
+                errorCount++;
+                errors.push({ row: lead.originalRow, error: 'Erreur d\'insertion' });
+            }
+        }
+
+        return {
+            success: true,
+            stats: {
+                processed: leads.length,
+                imported: successCount,
+                duplicates: duplicateCount,
+                errors: errorCount
+            }
+        };
+
+    } catch (error) {
+        console.error('Import Leads Error:', error);
+        return { success: false, error: 'Échec de l\'importation' };
+    }
+}
+
+export async function getDailyUserPerformanceAction(userId: string) {
+    try {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+        const [callsConfig, meetingsConfig] = await Promise.all([
+            (prisma as any).call.aggregate({
+                where: {
+                    callerId: userId,
+                    createdAt: {
+                        gte: startOfDay,
+                        lt: endOfDay
+                    }
+                },
+                _count: {
+                    id: true,
+                },
+                _sum: {
+                    duration: true
+                }
+            }),
+            (prisma as any).call.count({
+                where: {
+                    callerId: userId,
+                    outcome: 'APPOINTMENT_SET',
+                    createdAt: {
+                        gte: startOfDay,
+                        lt: endOfDay
+                    }
+                }
+            })
+        ]);
+
+        return {
+            success: true,
+            stats: {
+                callsCount: callsConfig._count.id || 0,
+                callsDuration: callsConfig._sum.duration || 0, // in seconds
+                appointmentsCount: meetingsConfig || 0
+            }
+        };
+    } catch (error) {
+        console.error("Get Performance Error:", error);
+        // Return zeros on error to avoid breaking UI
+        return {
+            success: false,
+            stats: { callsCount: 0, callsDuration: 0, appointmentsCount: 0 }
+        };
+    }
+}
+
+async function assignLeadRoundRobinHelper(organisationId: string, agencyId?: string): Promise<string | null> {
+    try {
+        // [Dynamic Config] Get Agency Mode
+        let mode: 'ROUND_ROBIN' | 'LOAD_BALANCED' | 'SKILL_BASED' = 'LOAD_BALANCED';
+        if (agencyId) {
+            const agency = await (prisma as any).agency.findUnique({ where: { id: agencyId } });
+            if (agency?.distributionMode) mode = agency.distributionMode;
+        }
+
+        const grants = await (prisma as any).userAccessGrant.findMany({
+            where: { organisationId },
+            include: { user: true }
+        });
+
+        let candidates = grants.map((g: any) => g.user);
+
+        // Filter by agency if possible
+        if (agencyId) {
+            candidates = candidates.filter((u: any) => !u.agencyId || u.agencyId === agencyId);
+        }
+
+        if (candidates.length === 0) return null;
+
+        const candidatesWithScore = await Promise.all(candidates.map(async (u: any) => {
+            let count = 0;
+
+            if (mode === 'ROUND_ROBIN') {
+                // Strategy: Count leads assigned TODAY to ensure rotation
+                const startOfDay = new Date();
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date();
+                endOfDay.setHours(23, 59, 59, 999);
+
+                count = await (prisma as any).lead.count({
+                    where: {
+                        assignedUserId: u.id,
+                        createdAt: { gte: startOfDay, lte: endOfDay }
+                    }
+                });
+            } else {
+                // Strategy: LOAD_BALANCED (Default)
+                count = await (prisma as any).lead.count({
+                    where: {
+                        assignedUserId: u.id,
+                        status: { in: ['PROSPECT', 'PROSPECTION', 'ATTEMPTED', 'CONTACTED'] }
+                    }
+                });
+            }
+            return { userId: u.id, loadScore: count };
+        }));
+
+        return LeadService.getBestCandidate(candidatesWithScore, mode);
+
+    } catch (e) {
+        console.error("Auto-Assign Error:", e);
+        return null;
     }
 }

@@ -10,6 +10,8 @@ export interface Agency {
     city?: string;
     country?: string;
     isActive: boolean;
+    distributionMode?: 'ROUND_ROBIN' | 'LOAD_BALANCED' | 'SKILL_BASED';
+    distributionConfig?: any;
     createdAt: Date;
     updatedAt: Date;
 }

@@ -18,15 +18,17 @@ interface CommunicationModalProps {
     title?: string;
     description?: string;
     targetType?: 'lead' | 'learner';
+    defaultMessage?: string;
+    defaultSubject?: string;
 }
 
 type Channel = 'sms' | 'whatsapp' | 'email';
 
-export function CommunicationModal({ leadIds, onClose, onSuccess, title, description, targetType = 'lead' }: CommunicationModalProps) {
+export function CommunicationModal({ leadIds, onClose, onSuccess, title, description, targetType = 'lead', defaultMessage, defaultSubject }: CommunicationModalProps) {
     const { activeOrganization } = useAuthStore();
     const [channel, setChannel] = useState<Channel>('whatsapp');
-    const [message, setMessage] = useState('');
-    const [subject, setSubject] = useState('Suivi de votre dossier');
+    const [message, setMessage] = useState(defaultMessage || '');
+    const [subject, setSubject] = useState(defaultSubject || 'Suivi de votre dossier');
     const [isSending, setIsSending] = useState(false);
     const [result, setResult] = useState<{ success: number, failed: number } | null>(null);
     const [templates, setTemplates] = useState<any[]>([]);

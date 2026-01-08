@@ -53,7 +53,8 @@ export async function createAgencyAction(organisationId: string, formData: FormD
                 phone,
                 email,
                 isActive: true,
-                isExamCenter: formData.get('isExamCenter') === 'on'
+                isExamCenter: formData.get('isExamCenter') === 'on',
+                distributionMode: (formData.get('distributionMode') as any) || 'ROUND_ROBIN'
             }
         });
         revalidatePath('/app/settings/structure');
@@ -88,7 +89,8 @@ export async function updateAgencyAction(organisationId: string, agencyId: strin
                 phone,
                 email,
                 franchiseId: franchiseId === "none" ? null : franchiseId,
-                isExamCenter: formData.get('isExamCenter') === 'on'
+                isExamCenter: formData.get('isExamCenter') === 'on',
+                distributionMode: (formData.get('distributionMode') as any) || 'ROUND_ROBIN'
             }
         });
         revalidatePath('/app/settings/structure');
@@ -148,5 +150,21 @@ export async function removeUserFromAgencyAction(userId: string, agencyId: strin
     } catch (error) {
         console.error("Remove User Agency Error:", error);
         return { success: false, error: "Failed to remove user from agency" };
+    }
+}
+export async function updateAgencyDistributionAction(agencyId: string, distributionMode: string, distributionConfig: any = {}) {
+    try {
+        await (prisma as any).agency.update({
+            where: { id: agencyId },
+            data: {
+                distributionMode,
+                distributionConfig
+            }
+        });
+        revalidatePath('/app/settings/structure');
+        return { success: true };
+    } catch (error) {
+        console.error("Update Agency Distribution Error:", error);
+        return { success: false, error: "Failed to update distribution settings" };
     }
 }

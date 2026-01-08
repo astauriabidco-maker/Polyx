@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     ChevronLeft, Upload, CheckCircle, XCircle, Clock, AlertCircle, FileText,
-    GraduationCap, AlertTriangle, Download, Award, MessageSquare, Send, Loader2, PenTool // [UPDATED]
+    GraduationCap, AlertTriangle, Download, Award, MessageSquare, Send, Loader2, PenTool, History // [UPDATED]
 } from "lucide-react";
 import { CommunicationModal } from "@/components/communication/communication-modal";
 import { initiateDocumentSignatureAction } from "@/application/actions/yousign.actions";
@@ -26,6 +26,7 @@ import { getAgenciesAction } from "@/application/actions/agency.actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getLearnerCompletionAction } from "@/application/actions/attendance.actions";
 import { CertificateModal } from "@/components/learners/CertificateModal";
+import ActivityTimeline from '@/components/crm/ActivityTimeline';
 
 export default function LearnerDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -333,6 +334,9 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                                 <TabsTrigger value="pedagogy" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
                                     <GraduationCap size={16} className="mr-2" /> Pédagogie & Suivi
                                 </TabsTrigger>
+                                <TabsTrigger value="history" className="data-[state=active]:bg-amber-50 data-[state=active]:text-amber-700">
+                                    <History size={16} className="mr-2" /> Historique (CRM)
+                                </TabsTrigger>
                             </TabsList>
 
                             <TabsContent value="admin" className="space-y-6">
@@ -580,6 +584,26 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                                     </p>
                                     <Button variant="outline" className="mt-6">Lier au LMS</Button>
                                 </div>
+                            </TabsContent>
+
+                            <TabsContent value="history" className="space-y-6">
+                                {learner.leadId ? (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="text-sm font-bold text-slate-600 uppercase tracking-wider">Fil d'Activité Unifié</CardTitle>
+                                            <CardDescription>
+                                                Retrouvez l'historique complet depuis que l'apprenant était un prospect.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <ActivityTimeline leadId={learner.leadId} />
+                                        </CardContent>
+                                    </Card>
+                                ) : (
+                                    <div className="p-12 text-center border rounded-xl bg-white">
+                                        <p className="text-slate-500">Pas d'historique CRM disponible pour cet apprenant (création manuelle sans lead d'origine).</p>
+                                    </div>
+                                )}
                             </TabsContent>
                         </Tabs>
                     ) : (

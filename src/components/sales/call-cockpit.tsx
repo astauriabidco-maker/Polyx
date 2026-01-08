@@ -1,20 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Mic, Globe, ShieldCheck, UserCheck, AlertTriangle, CheckCircle, Clock, X } from 'lucide-react';
+import { Mic, Globe, ShieldCheck, UserCheck, AlertTriangle, CheckCircle, Clock, X, MessageSquare, Send, Mail } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { iaOrchestrator } from '@/infrastructure/services/ia-orchestrator';
 import { CallOutcome, RefusalReason } from '@/domain/entities/lead';
-
 import { Lead, LeadStatus, LeadWithOrg } from '@/domain/entities/lead';
+
+import { getAgencyCollaboratorsAction, confirmLeadAppointmentAction } from '@/application/actions/agenda.actions';
+import { logActivityAction } from '@/application/actions/lead.actions';
+import { useAuthStore } from '@/application/store/auth-store';
+import { Loader2 } from 'lucide-react';
 
 interface CallCockpitProps {
     lead: LeadWithOrg;
     onEndCall: (outcome: CallOutcome, data?: any) => void;
+    recordingEnabled?: boolean;
 }
 
-export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
+export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitProps) {
     const leadName = `${lead.firstName} ${lead.lastName}`;
     const organizationName = lead.organizationName;
     const [duration, setDuration] = useState(0);
@@ -33,19 +39,86 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
     const [refusalReason, setRefusalReason] = useState<RefusalReason | ''>('');
     const [showRefusalModal, setShowRefusalModal] = useState(false);
 
+    // [Step 2] Appointment & Collaborators
+    const { user: activeUser } = useAuthStore();
+    const [collaborators, setCollaborators] = useState<{ id: string, firstName: string, lastName: string }[]>([]);
+    const [selectedCollaboratorId, setSelectedCollaboratorId] = useState<string>('');
+    const [isConfirming, setIsConfirming] = useState(false);
+
     // Handlers
     const handleAppointmentClick = () => setShowScheduler(true);
     const handleCallbackClick = () => setShowCallbackModal(true);
     const handleRefusalClick = () => setShowRefusalModal(true);
 
-    const confirmAppointment = () => {
-        if (!appointmentDate || !appointmentTime) {
-            alert("Veuillez sélectionner une date et une heure.");
+    const handleNoAnswerWhatsApp = () => {
+        const cleanPhone = lead.phone.replace(/\D/g, '');
+        const message = encodeURIComponent(`Bonjour ${lead.firstName}, j'ai tenté de vous joindre à l'instant concernant votre demande sur ${organizationName}. Quand seriez-vous disponible pour un court échange ?`);
+        window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+        onEndCall(CallOutcome.NO_ANSWER, { duration });
+    };
+
+    const handleWhatsAppClick = async (phone: string) => {
+        const cleanPhone = phone.replace(/\D/g, '');
+        window.open(`https://wa.me/${cleanPhone}`, '_blank');
+
+        if (activeUser) {
+            await logActivityAction({
+                leadId: lead.id,
+                userId: activeUser.id,
+                type: 'WHATSAPP_MSG',
+                content: 'Conversation WhatsApp ouverte depuis le cockpit'
+            });
+        }
+    };
+
+    const handleEmailClick = async (email: string) => {
+        window.open(`mailto:${email}`, '_blank');
+
+        if (activeUser) {
+            await logActivityAction({
+                leadId: lead.id,
+                userId: activeUser.id,
+                type: 'EMAIL_SENT',
+                content: 'Client mail ouvert depuis le cockpit'
+            });
+        }
+    };
+
+    const confirmAppointment = async () => {
+        if (!appointmentDate || !appointmentTime || !selectedCollaboratorId) {
+            alert("Veuillez sélectionner une date, une heure et un commercial.");
             return;
         }
-        const scheduledDate = new Date(`${appointmentDate}T${appointmentTime}`);
-        onEndCall(CallOutcome.APPOINTMENT_SET, { nextCallback: scheduledDate });
-        setShowScheduler(false);
+
+        if (!lead.agencyId) {
+            alert("Ce lead n'est pas associé à une agence. Impossible de fixer un RDV physique.");
+            return;
+        }
+
+        setIsConfirming(true);
+        const start = new Date(`${appointmentDate}T${appointmentTime}`);
+        const end = new Date(start);
+        end.setMinutes(end.getMinutes() + 45); // Standard 45min meeting
+
+        const res = await confirmLeadAppointmentAction({
+            organisationId: lead.organizationId,
+            leadId: lead.id,
+            agencyId: lead.agencyId!,
+            userId: selectedCollaboratorId,
+            start,
+            end,
+            title: `RDV Agence - ${leadName}`,
+            callerId: activeUser?.id || 'unknown'
+        });
+
+        setIsConfirming(false);
+
+        if (res.success) {
+            onEndCall(CallOutcome.APPOINTMENT_SET, { duration });
+            setShowScheduler(false);
+        } else {
+            alert(res.error || "Erreur lors de la confirmation du RDV");
+        }
     };
 
     const confirmCallback = () => {
@@ -54,7 +127,7 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
             return;
         }
         const scheduledDate = new Date(`${callbackDate}T${callbackTime}`);
-        onEndCall(CallOutcome.CALLBACK_SCHEDULED, { nextCallback: scheduledDate });
+        onEndCall(CallOutcome.CALLBACK_SCHEDULED, { nextCallback: scheduledDate, duration });
         setShowCallbackModal(false);
     };
 
@@ -63,7 +136,7 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
             alert("Veuillez sélectionner un motif de refus.");
             return;
         }
-        onEndCall(CallOutcome.REFUSAL, { refusalReason });
+        onEndCall(CallOutcome.REFUSAL, { refusalReason, duration });
         setShowRefusalModal(false);
     };
 
@@ -111,6 +184,27 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
         };
     }, [leadName]);
 
+    // [Step 2] Fetch Collaborators
+    useEffect(() => {
+        if (lead.agencyId) {
+            getAgencyCollaboratorsAction(lead.agencyId).then(res => {
+                if (res.success && res.data) {
+                    const saneCollaborators = res.data.map(c => ({
+                        id: c.id,
+                        firstName: c.firstName || '',
+                        lastName: c.lastName || ''
+                    }));
+                    setCollaborators(saneCollaborators);
+                    // Default to first or current user if in list
+                    if (res.data.length > 0) {
+                        const me = (res.data as any[]).find(u => u.id === activeUser?.id);
+                        setSelectedCollaboratorId(me ? me.id : res.data[0].id);
+                    }
+                }
+            });
+        }
+    }, [lead.agencyId, activeUser?.id]);
+
     const formatTime = (sec: number) => {
         const m = Math.floor(sec / 60).toString().padStart(2, '0');
         const s = (sec % 60).toString().padStart(2, '0');
@@ -129,9 +223,14 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
                     <span className="font-mono text-xl font-bold text-red-100">{formatTime(duration)}</span>
                     <span className="text-sm text-slate-400"> • En ligne avec {leadName}</span>
                     {organizationName && <span className="text-xs bg-slate-800 text-indigo-300 px-2 py-1 rounded ml-2 border border-slate-700">{organizationName}</span>}
+                    {recordingEnabled && (
+                        <span className="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-red-100 border border-red-200 text-red-700 rounded text-[10px] font-black uppercase tracking-wider shadow-sm animate-pulse">
+                            <Mic size={10} className="text-red-600" /> REC
+                        </span>
+                    )}
                 </div>
                 <div>
-                    <Button variant="outline" size="sm" onClick={() => onEndCall(CallOutcome.NO_ANSWER)} className="text-red-600 hover:bg-red-50 border-red-200">Hang Up</Button>
+                    <Button variant="outline" size="sm" onClick={() => onEndCall(CallOutcome.NO_ANSWER, { duration })} className="text-red-600 hover:bg-red-50 border-red-200">Hang Up</Button>
                 </div>
             </div>
 
@@ -173,11 +272,29 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
 
                         {/* Lead Details Card */}
                         <div className="p-3 bg-slate-50 rounded border border-slate-200">
-                            <h5 className="font-bold text-xs text-slate-500 uppercase mb-2">Lead Info</h5>
+                            <h5 className="font-bold text-xs text-slate-500 uppercase mb-2">Infos Lead & Contact</h5>
                             <div className="text-sm space-y-1">
                                 <p><span className="font-semibold">Email:</span> {lead.email}</p>
                                 <p><span className="font-semibold">Ville:</span> {lead.city ? `${lead.city} (${lead.zipCode})` : 'N/A'}</p>
                                 <p><span className="font-semibold">Source:</span> {lead.source}</p>
+                            </div>
+
+                            {/* Multichannel Quick Actions */}
+                            <div className="mt-3 flex gap-2">
+                                <Button
+                                    size="sm"
+                                    className="flex-1 gap-1 bg-[#25D366] hover:bg-[#128C7E] text-white h-8 text-xs border-none"
+                                    onClick={() => handleWhatsAppClick(lead.phone)}
+                                >
+                                    <MessageSquare size={14} /> WhatsApp
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="flex-1 gap-1 bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs border-none"
+                                    onClick={() => handleEmailClick(lead.email)}
+                                >
+                                    <Mail size={14} /> Email
+                                </Button>
                             </div>
                         </div>
 
@@ -225,6 +342,9 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
                         <Button variant="ghost" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleRefusalClick}>
                             Refus / Pas intéressé
                         </Button>
+
+                        <div className="pt-2 border-t border-slate-100 flex gap-2">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -261,14 +381,30 @@ export function CallCockpit({ lead, onEndCall }: CallCockpitProps) {
                                     onChange={(e) => setAppointmentTime(e.target.value)}
                                 />
                             </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Commercial Showroom</label>
+                                <select
+                                    className="w-full p-2 border rounded-md bg-white"
+                                    value={selectedCollaboratorId}
+                                    onChange={(e) => setSelectedCollaboratorId(e.target.value)}
+                                >
+                                    <option value="" disabled>Sélectionner un commercial</option>
+                                    {collaborators.map(collab => (
+                                        <option key={collab.id} value={collab.id}>
+                                            {collab.firstName} {collab.lastName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                             <div className="p-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-indigo-700">
                                 ℹ️ Ce RDV sera synchronisé avec l'agenda de l'agence.
                             </div>
                         </div>
 
                         <div className="flex gap-3 justify-end">
-                            <Button variant="outline" onClick={() => setShowScheduler(false)}>Annuler</Button>
-                            <Button className="bg-green-600 hover:bg-green-700" onClick={confirmAppointment}>
+                            <Button variant="outline" onClick={() => setShowScheduler(false)} disabled={isConfirming}>Annuler</Button>
+                            <Button className="bg-green-600 hover:bg-green-700" onClick={confirmAppointment} disabled={isConfirming}>
+                                {isConfirming ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
                                 Valider le RDV
                             </Button>
                         </div>
