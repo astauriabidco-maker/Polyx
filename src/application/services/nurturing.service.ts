@@ -13,6 +13,11 @@ export class NurturingService {
      * Schedules all steps as PENDING tasks.
      */
     static async enrollLead(leadId: string, sequenceId: string, organisationId: string) {
+        // 0. Check Opt-out
+        const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+        if (!lead) throw new Error('Lead not found');
+        if (lead.optOut) throw new Error('Lead has opted out of marketing communications (RGPD).');
+
         // 1. Get sequence and steps
         const sequence = await prisma.nurturingSequence.findUnique({
             where: { id: sequenceId },
@@ -37,14 +42,17 @@ export class NurturingService {
         const tasks = [];
         let cumulativeDelay = 0;
 
-        // Load lead data for hydration
-        const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-
         for (const step of sequence.steps) {
             cumulativeDelay += step.delayInHours;
             const scheduledAt = addHours(new Date(), cumulativeDelay);
 
-            const hydratedContent = this.hydrateTemplate(step.content, lead);
+            // A/B Testing Logic
+            // If Step has contentB, randomly assign 'A' or 'B'.
+            const isAbTest = !!step.contentB;
+            const variant = isAbTest ? (Math.random() < 0.5 ? 'A' : 'B') : 'A';
+
+            const rawContent = variant === 'B' && step.contentB ? step.contentB : step.content;
+            const hydratedContent = this.hydrateTemplate(rawContent, lead);
 
             tasks.push(prisma.nurturingTask.create({
                 data: {
@@ -57,6 +65,7 @@ export class NurturingService {
                     scheduledAt,
                     status: NurturingTaskStatus.PENDING,
                     content: hydratedContent,
+                    variant: variant // Store tracking info
                 }
             }));
         }
@@ -158,6 +167,16 @@ export class NurturingService {
 
         for (const task of dueTasks) {
             try {
+                // 0. Double check Opt-out status before sending
+                if (task.lead.optOut) {
+                    console.warn(`[Nurturing] Skipped task ${task.id} because lead ${task.leadId} has opted out.`);
+                    await prisma.nurturingTask.update({
+                        where: { id: task.id },
+                        data: { status: NurturingTaskStatus.CANCELLED }
+                    });
+                    continue;
+                }
+
                 // 1. Send via real provider if configured
                 if (task.channel === 'SMS' || task.channel === 'WHATSAPP') {
                     const twilio = await TwilioService.create(task.organisationId);
@@ -179,10 +198,11 @@ export class NurturingService {
                         leadId: task.leadId,
                         userId: 'SYSTEM',
                         type: 'COMMUNICATION' as any,
-                        content: `[Automatique ${task.channel}] ${task.content}`,
+                        content: `[Automatique ${task.channel}${task.variant && task.variant !== 'A' ? ' (Var. ' + task.variant + ')' : ''}] ${task.content}`,
                         metadata: JSON.stringify({
                             nurturingTaskId: task.id,
-                            channel: task.channel
+                            channel: task.channel,
+                            variant: task.variant
                         })
                     }
                 });
@@ -234,5 +254,53 @@ export class NurturingService {
             .replace(/{{firstName}}/g, lead.firstName || '')
             .replace(/{{lastName}}/g, lead.lastName || '')
             .replace(/{{phone}}/g, lead.phone || '');
+    }
+
+    /**
+     * Opt-out a lead from all marketing communications.
+     * Cancels all active enrollments.
+     */
+    static async optOutLead(leadId: string) {
+        await prisma.lead.update({
+            where: { id: leadId },
+            data: {
+                optOut: true,
+                optOutDate: new Date()
+            }
+        });
+
+        await this.cancelLeadEnrollments(leadId);
+
+        // Also log activity
+        await prisma.leadActivity.create({
+            data: {
+                leadId,
+                userId: 'SYSTEM',
+                type: 'NOTE' as any,
+                content: "🛑 Le lead s'est désabonné (Opt-out RGPD).",
+            }
+        });
+    }
+
+    /**
+     * Re-subscribe a lead (Opt-in).
+     */
+    static async optInLead(leadId: string) {
+        await prisma.lead.update({
+            where: { id: leadId },
+            data: {
+                optOut: false,
+                optOutDate: null
+            }
+        });
+
+        await prisma.leadActivity.create({
+            data: {
+                leadId,
+                userId: 'SYSTEM',
+                type: 'NOTE' as any,
+                content: "✅ Le lead s'est réabonné (Opt-in).",
+            }
+        });
     }
 }

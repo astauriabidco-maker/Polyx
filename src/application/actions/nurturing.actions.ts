@@ -39,7 +39,7 @@ export async function enrollLeadAction(leadId: string, sequenceId: string, organ
  */
 export async function cancelEnrollmentAction(leadId: string, sequenceId?: string) {
     try {
-        await NurturingService.cancelLeadEnrollments(leadId, sequenceId);
+        await NurturingService.cancelLeadEnrollments(leadId);
         revalidatePath(`/app/leads`);
         return { success: true };
     } catch (error: any) {
@@ -216,6 +216,80 @@ export async function updateFullSequenceAction(sequenceId: string, data: {
         return { success: true, sequence };
     } catch (error: any) {
         console.error("Update Full Sequence Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Calculates ROI metrics for all active sequences in an organization.
+ * Metrics:
+ * - enrolled: Total leads ever enrolled in the sequence
+ * - active: Leads currently in the sequence
+ * - converted: Leads who were in the sequence and are now RDV_FIXE (or later stage)
+ * - lost: Leads who finished the sequence without converting
+ * - rate: Conversion rate %
+ */
+export async function getMarketingRoiAction(organisationId: string) {
+    try {
+        const sequences = await prisma.nurturingSequence.findMany({
+            where: { organisationId, isActive: true },
+            include: {
+                enrollments: {
+                    include: {
+                        lead: {
+                            select: { status: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        const roiData = sequences.map(seq => {
+            const totalEnrolled = seq.enrollments.length;
+            const active = seq.enrollments.filter(e => e.status === 'ACTIVE').length;
+
+            // Conversion definition: Lead Status is RDV_FIXE
+            const converted = seq.enrollments.filter(e =>
+                e.lead.status === 'RDV_FIXE' ||
+                e.lead.status === 'SIGNED' ||
+                e.lead.status === 'CONVERTED'
+            ).length;
+
+            const rate = totalEnrolled > 0 ? Math.round((converted / totalEnrolled) * 100) : 0;
+
+            return {
+                id: seq.id,
+                name: seq.name,
+                totalEnrolled,
+                active,
+                converted,
+                rate
+            };
+        });
+
+        // Sort by Conversion Rate DESC
+        return { success: true, data: roiData.sort((a, b) => b.rate - a.rate) };
+    } catch (error: any) {
+        console.error("ROI Action Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Toggles the Opt-out status of a lead.
+ * If opting out: cancels all active enrollments.
+ */
+export async function toggleLeadOptOutAction(leadId: string, isOptOut: boolean) {
+    try {
+        if (isOptOut) {
+            await NurturingService.optOutLead(leadId);
+        } else {
+            await NurturingService.optInLead(leadId);
+        }
+        revalidatePath(`/app/leads`);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Toggle Opt-Out Error:", error);
         return { success: false, error: error.message };
     }
 }

@@ -183,7 +183,7 @@ export async function getTransformationLeaderboardAction(orgId: string) {
             const convertedLeads = await prisma.lead.count({
                 where: {
                     organisationId: orgId,
-                    assignedToId: user.id,
+                    assignedUserId: user.id,
                     status: LeadStatus.RDV_FIXE
                 }
             });

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutGrid, ChartBar, Users, BookOpen, GraduationCap,
     Fingerprint, Briefcase, Folder, ShieldCheck, Settings2,
-    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit, Calendar
+    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit, Calendar, Target
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
@@ -29,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Tableau de Bord', href: '/app/dashboard', icon: ChartBar, show: true },
         { name: 'Agenda Intelligent', href: '/app/agenda', icon: Calendar, show: true },
         { name: 'Leads & Marketing', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
+        { name: 'Audiences & Segments', href: '/app/leads/segments', icon: Target, show: hasPermission('canManageLeads') },
         { name: 'CRM & Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
     ];
 

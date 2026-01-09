@@ -16,6 +16,8 @@ import {
 } from '@/application/actions/nurturing.actions';
 import { generateWebhookSecretAction, getWebhookSettingsAction } from '@/application/actions/webhook-settings.actions';
 import { Mail, MessageSquare, Plus, Play, Clock, Trash2, Send, Zap, Edit, GripVertical, X, Link, Copy, Check } from 'lucide-react';
+import { MarketingRoiWidget } from '@/components/marketing/MarketingRoiWidget';
+import { MobilePreview } from '@/components/marketing/MobilePreview';
 
 interface Step {
     id?: string;
@@ -202,6 +204,8 @@ export default function MarketingSettingsPage() {
                 </div>
             </div>
 
+            <MarketingRoiWidget />
+
             <Card className="overflow-hidden border-slate-200 shadow-sm">
                 <CardHeader className="bg-slate-50 border-b border-slate-100">
                     <CardTitle>Séquences de Nurturing</CardTitle>
@@ -346,124 +350,137 @@ export default function MarketingSettingsPage() {
             {/* Full Edit Modal with Step Editor */}
             {editingSequence && (
                 <Modal isOpen={!!editingSequence} onClose={() => setEditingSequence(null)} title="Modifier la séquence">
-                    <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                        {/* Sequence Metadata */}
-                        <div className="space-y-4">
-                            <Input
-                                label="Nom de la séquence"
-                                value={editForm.name}
-                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            />
-                            <Input
-                                label="Description"
-                                value={editForm.description}
-                                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                            />
-                        </div>
+                    <div className="flex gap-8 max-h-[80vh]">
+                        {/* LEFT: Editor */}
+                        <div className="flex-1 overflow-y-auto pr-2">
+                            <div className="space-y-6">
+                                {/* Sequence Metadata */}
+                                <div className="space-y-4">
+                                    <Input
+                                        label="Nom de la séquence"
+                                        value={editForm.name}
+                                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    />
+                                    <Input
+                                        label="Description"
+                                        value={editForm.description}
+                                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                    />
+                                </div>
 
-                        {/* Steps Editor */}
-                        <div className="border-t pt-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-slate-900">Étapes de la séquence</h3>
-                                <Button variant="outline" size="sm" onClick={addStep} className="gap-1">
-                                    <Plus size={14} /> Ajouter une étape
-                                </Button>
-                            </div>
-
-                            <div className="space-y-4">
-                                {editSteps.map((step, index) => (
-                                    <div key={index} className="p-4 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <GripVertical size={16} className="text-slate-400" />
-                                                <span className="font-bold text-slate-700">Étape {index + 1}</span>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${step.type === 'SMS' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'
-                                                    }`}>
-                                                    {step.type}
-                                                </span>
-                                            </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => removeStep(index)}
-                                                className="text-slate-400 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0"
-                                            >
-                                                <X size={14} />
-                                            </Button>
-                                        </div>
-
-                                        <div className="grid grid-cols-3 gap-3">
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-600">Type</label>
-                                                <select
-                                                    value={step.type}
-                                                    onChange={(e) => updateStep(index, 'type', e.target.value)}
-                                                    className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
-                                                >
-                                                    <option value="SMS">SMS</option>
-                                                    <option value="EMAIL">Email</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-600">Canal</label>
-                                                <select
-                                                    value={step.channel}
-                                                    onChange={(e) => updateStep(index, 'channel', e.target.value)}
-                                                    className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
-                                                >
-                                                    <option value="WHATSAPP">WhatsApp</option>
-                                                    <option value="SMS">SMS</option>
-                                                    <option value="EMAIL">Email</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-600">Délai (heures)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={step.delayInHours}
-                                                    onChange={(e) => updateStep(index, 'delayInHours', parseInt(e.target.value) || 0)}
-                                                    className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {step.type === 'EMAIL' && (
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-600">Sujet de l'email</label>
-                                                <input
-                                                    type="text"
-                                                    value={step.subject || ''}
-                                                    onChange={(e) => updateStep(index, 'subject', e.target.value)}
-                                                    placeholder="Sujet de l'email..."
-                                                    className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
-                                                />
-                                            </div>
-                                        )}
-
-                                        <div>
-                                            <label className="text-xs font-medium text-slate-600">Contenu du message</label>
-                                            <textarea
-                                                value={step.content}
-                                                onChange={(e) => updateStep(index, 'content', e.target.value)}
-                                                placeholder="Bonjour {{firstName}}, ..."
-                                                rows={3}
-                                                className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white resize-none"
-                                            />
-                                            <p className="text-[10px] text-slate-400 mt-1">
-                                                Variables disponibles : {"{{firstName}}"}, {"{{lastName}}"}, {"{{phone}}"}
-                                            </p>
-                                        </div>
+                                {/* Steps Editor */}
+                                <div className="border-t pt-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-slate-900">Étapes de la séquence</h3>
+                                        <Button variant="outline" size="sm" onClick={addStep} className="gap-1">
+                                            <Plus size={14} /> Ajouter une étape
+                                        </Button>
                                     </div>
-                                ))}
+
+                                    <div className="space-y-4">
+                                        {editSteps.map((step, index) => (
+                                            <div key={index} className="p-4 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <GripVertical size={16} className="text-slate-400" />
+                                                        <span className="font-bold text-slate-700">Étape {index + 1}</span>
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${step.type === 'SMS' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'
+                                                            }`}>
+                                                            {step.type}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeStep(index)}
+                                                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0"
+                                                    >
+                                                        <X size={14} />
+                                                    </Button>
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Type</label>
+                                                        <select
+                                                            value={step.type}
+                                                            onChange={(e) => updateStep(index, 'type', e.target.value)}
+                                                            className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
+                                                        >
+                                                            <option value="SMS">SMS</option>
+                                                            <option value="EMAIL">Email</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Canal</label>
+                                                        <select
+                                                            value={step.channel}
+                                                            onChange={(e) => updateStep(index, 'channel', e.target.value)}
+                                                            className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
+                                                        >
+                                                            <option value="WHATSAPP">WhatsApp</option>
+                                                            <option value="SMS">SMS</option>
+                                                            <option value="EMAIL">Email</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Délai (heures)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={step.delayInHours}
+                                                            onChange={(e) => updateStep(index, 'delayInHours', parseInt(e.target.value) || 0)}
+                                                            className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {step.type === 'EMAIL' && (
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Sujet de l'email</label>
+                                                        <input
+                                                            type="text"
+                                                            value={step.subject || ''}
+                                                            onChange={(e) => updateStep(index, 'subject', e.target.value)}
+                                                            placeholder="Sujet de l'email..."
+                                                            className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white"
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600">Contenu du message</label>
+                                                    <textarea
+                                                        value={step.content}
+                                                        onChange={(e) => updateStep(index, 'content', e.target.value)}
+                                                        placeholder="Bonjour {{firstName}}, ..."
+                                                        rows={3}
+                                                        className="w-full mt-1 text-sm border border-slate-200 rounded-md p-2 bg-white resize-none"
+                                                    />
+                                                    <p className="text-[10px] text-slate-400 mt-1">
+                                                        Variables disponibles : {"{{firstName}}"}, {"{{lastName}}"}, {"{{phone}}"}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-white py-3">
+                                    <Button variant="outline" onClick={() => setEditingSequence(null)}>Annuler</Button>
+                                    <Button onClick={handleSaveEdit} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700">
+                                        {isSaving ? 'Sauvegarde...' : 'Enregistrer les modifications'}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-white py-3">
-                            <Button variant="outline" onClick={() => setEditingSequence(null)}>Annuler</Button>
-                            <Button onClick={handleSaveEdit} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700">
-                                {isSaving ? 'Sauvegarde...' : 'Enregistrer les modifications'}
-                            </Button>
+                        {/* RIGHT: Mobile Preview */}
+                        <div className="w-[340px] hidden xl:block sticky top-0 h-full p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                            <h4 className="text-sm font-bold text-center mb-6 text-slate-500">Aperçu en direct</h4>
+                            <div className="transform scale-90 origin-top">
+                                <MobilePreview steps={editSteps} />
+                            </div>
                         </div>
                     </div>
                 </Modal>

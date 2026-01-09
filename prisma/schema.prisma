@@ -135,6 +135,7 @@ model Organisation {
 
   // Nurturing & Automation
   nurturingSequences NurturingSequence[]
+  leadSegments       LeadSegment[]
   
   // Gamification
   challenges         Challenge[]
@@ -144,6 +145,22 @@ model Organisation {
 
   @@index([status])
   @@map("organisations")
+}
+
+model LeadSegment {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  filterGroup    Json // Stores FilterGroup { conjunction, rules }
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organisationId])
+  @@map("lead_segments")
 }
 
 // ============================================
@@ -721,6 +738,8 @@ model Lead {
 
   // Dates
   consentDate    DateTime?
+  optOut         Boolean   @default(false)
+  optOutDate     DateTime?
   responseDate   DateTime?
   nextCallbackAt DateTime?
   lastCallDate   DateTime?
@@ -1744,7 +1763,8 @@ model NurturingStep {
   delayInHours   Int @default(0) // Delay from previous step or enrollment start
   
   subject        String? // For email
-  content        String // Template content
+  content        String // Template content (Variant A)
+  contentB       String? // Variant B (Optional)
   
   tasks          NurturingTask[]
   
@@ -1798,6 +1818,7 @@ model NurturingTask {
   status         String   @default("PENDING") // PENDING, EXECUTED, CANCELLED, FAILED
   
   content        String
+  variant        String? @default("A") // 'A' or 'B'
   metadata       Json?
   
   createdAt      DateTime @default(now())
