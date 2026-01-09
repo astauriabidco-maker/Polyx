@@ -5,15 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Phone, Target, TrendingUp, Calendar, ArrowRight, User } from 'lucide-react';
 import { getSalesMetricsAction } from '@/application/actions/metrics.actions';
+import { getVoiceSettingsAction } from '@/application/actions/communication.actions';
+import { PhoningSessionModal } from '@/components/sales/phoning-session-modal';
 
 export default function SalesCockpit({ userId, orgId }: { userId: string, orgId: string }) {
     const [stats, setStats] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSessionActive, setIsSessionActive] = useState(false);
+    const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
 
     useEffect(() => {
         async function load() {
-            const res = await getSalesMetricsAction(userId, orgId);
-            if (res.success) setStats(res);
+            const [metricsRes, voiceRes] = await Promise.all([
+                getSalesMetricsAction(userId, orgId),
+                getVoiceSettingsAction(orgId)
+            ]);
+
+            if (metricsRes.success) setStats(metricsRes);
+            if (voiceRes.success && voiceRes.data) {
+                setIsVoiceEnabled((voiceRes.data as any).voiceEnabled || false);
+            }
             setIsLoading(false);
         }
         load();
@@ -21,7 +32,15 @@ export default function SalesCockpit({ userId, orgId }: { userId: string, orgId:
 
     if (isLoading) return <div className="p-8 text-slate-400">Chargement de votre cockpit...</div>;
 
-    const { metrics, pipeline } = stats;
+    const { metrics, pipeline, sessionCandidates } = stats;
+
+    const handleStartSession = () => {
+        if (!isVoiceEnabled) {
+            alert("La téléphonie n'est pas activée pour votre organisation. Veuillez la configurer dans les réglages.");
+            return;
+        }
+        setIsSessionActive(true);
+    };
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -80,7 +99,11 @@ export default function SalesCockpit({ userId, orgId }: { userId: string, orgId:
                                 </div>
                                 <h3 className="text-lg font-bold text-slate-900">Session de Phoning requise</h3>
                                 <p className="text-slate-500 mb-6">Vous avez {metrics.callsToDo} prospects à rappeler aujourd'hui.</p>
-                                <Button className="bg-rose-600 hover:bg-rose-700 font-bold px-8 shadow-lg shadow-rose-200">
+                                <Button
+                                    type="button"
+                                    onClick={handleStartSession}
+                                    className="relative z-50 cursor-pointer bg-rose-600 hover:bg-rose-700 font-bold px-8 shadow-lg shadow-rose-200"
+                                >
                                     Lancer le Call Cockpit
                                 </Button>
                             </div>
@@ -118,6 +141,14 @@ export default function SalesCockpit({ userId, orgId }: { userId: string, orgId:
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Session Modal */}
+            {isSessionActive && (
+                <PhoningSessionModal
+                    leads={sessionCandidates || []}
+                    onClose={() => setIsSessionActive(false)}
+                />
+            )}
         </div>
     );
 }

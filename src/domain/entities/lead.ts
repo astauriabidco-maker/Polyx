@@ -32,9 +32,17 @@ export enum LeadSource {
 }
 
 export enum CallOutcome {
+    // Successful outcomes
     APPOINTMENT_SET = 'APPOINTMENT_SET',
     CALLBACK_SCHEDULED = 'CALLBACK_SCHEDULED',
+    ANSWERED = 'ANSWERED', // Spoke but no decision yet
+
+    // Unsuccessful attempts
     NO_ANSWER = 'NO_ANSWER',
+    BUSY = 'BUSY',
+    VOICEMAIL = 'VOICEMAIL',
+
+    // Terminal outcomes
     REFUSAL = 'REFUSAL',
     WRONG_NUMBER = 'WRONG_NUMBER',
 }

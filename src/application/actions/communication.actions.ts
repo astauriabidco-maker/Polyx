@@ -143,11 +143,34 @@ export async function saveTwilioConfigAction(orgId: string, data: {
     }
 }
 
+export async function testTwilioConnectionAction(orgId: string) {
+    try {
+        const service = await TwilioService.create(orgId);
+        if (!service) {
+            return { success: false, error: 'Service Twilio non configuré' };
+        }
+
+        const result = await service.testConnection();
+        return result;
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 export async function getVoiceSettingsAction(orgId: string) {
     try {
         const config = await prisma.integrationConfig.findUnique({
             where: { organisationId: orgId }
         });
+
+        // Mask sensitive fields in voiceConfig
+        if (config?.voiceConfig) {
+            const voiceConfig = config.voiceConfig as any;
+            if (voiceConfig.deepgramApiKey) {
+                voiceConfig.deepgramApiKey = '••••••••••••••••';
+            }
+        }
+
         return { success: true, data: config };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -190,6 +213,12 @@ export async function saveVoiceConfigAction(orgId: string, data: {
     config: any;
 }) {
     try {
+        // [MODIFIED] Encryption for sensitive fields in config if needed
+        const configToSave = { ...data.config };
+        if (configToSave.deepgramApiKey && !configToSave.deepgramApiKey.startsWith('••••')) {
+            configToSave.deepgramApiKey = encrypt(configToSave.deepgramApiKey);
+        }
+
         await prisma.integrationConfig.upsert({
             where: { organisationId: orgId },
             create: {
@@ -197,18 +226,39 @@ export async function saveVoiceConfigAction(orgId: string, data: {
                 voiceProvider: data.provider,
                 voiceEnabled: data.enabled,
                 recordingEnabled: data.recordingEnabled,
-                voiceConfig: data.config
+                voiceConfig: configToSave
             },
             update: {
                 voiceProvider: data.provider,
                 voiceEnabled: data.enabled,
                 recordingEnabled: data.recordingEnabled,
-                voiceConfig: data.config
+                voiceConfig: configToSave
             }
         });
 
         revalidatePath('/app/settings/integrations');
         return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * VOICE INTELLIGENCE (STT / Deepgram)
+ */
+
+export async function testDeepgramConnectionAction(apiKey: string) {
+    try {
+        const response = await fetch('https://api.deepgram.com/v1/projects', {
+            headers: { 'Authorization': `Token ${apiKey}` }
+        });
+
+        if (response.ok) {
+            return { success: true, message: "Connexion Deepgram réussie !" };
+        } else {
+            const err = await response.json();
+            return { success: false, error: err.err_msg || "Clé API invalide" };
+        }
     } catch (error: any) {
         return { success: false, error: error.message };
     }

@@ -37,7 +37,7 @@ export default function GroupsPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (user && !user.isGlobalAdmin) {
+        if (user && !(user as any).isGlobalAdmin) {
             router.push('/app');
         }
     }, [user, router]);

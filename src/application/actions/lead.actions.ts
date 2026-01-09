@@ -5,6 +5,7 @@ import { Lead, LeadWithOrg, LeadStatus, SalesStage } from '@/domain/entities/lea
 import { getAgencyWhereClause } from '@/lib/auth-utils';
 import { LeadService } from '@/application/services/lead.service';
 import { GamificationService, GamificationActivity } from '@/application/services/gamification.service';
+import { revalidatePath } from 'next/cache';
 
 // Mimics a real DB query with latency
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -123,10 +124,13 @@ export async function updateLeadAction(leadId: string, data: Partial<Lead>): Pro
 
 export async function getSalesRepsAction(organisationId: string): Promise<{ success: boolean, users: { id: string, name: string }[] }> {
     try {
+        console.log(`[getSalesRepsAction] Fetching for org: ${organisationId}`);
         const grants = await (prisma as any).userAccessGrant.findMany({
             where: { organisationId },
             include: { user: true }
         });
+
+        console.log(`[getSalesRepsAction] Found ${grants.length} grants.`);
 
         const users = grants.map((g: any) => ({
             id: g.user.id,
@@ -135,6 +139,7 @@ export async function getSalesRepsAction(organisationId: string): Promise<{ succ
 
         return { success: true, users };
     } catch (e) {
+        console.error("[getSalesRepsAction] Error:", e);
         return { success: false, users: [] };
     }
 }
@@ -190,18 +195,15 @@ export async function createManualLeadAction(leadData: Partial<Lead>, organizati
                 lastName: processedLead.lastName || 'Inconnu',
                 email: processedLead.email || '',
                 phone: processedLead.phone || '',
-                mobile: processedLead.mobile || '',
                 street: processedLead.street || '',
                 zipCode: processedLead.zipCode || '',
                 city: processedLead.city || '',
-                country: processedLead.country || 'France',
                 source: processedLead.source || 'Manual',
                 score: processedLead.score,
                 status: processedLead.status,
                 salesStage: processedLead.salesStage || null,
                 assignedUserId: processedLead.assignedUserId,
                 agencyId: processedLead.agencyId,
-                history: processedLead.history as any,
                 callAttempts: processedLead.callAttempts,
                 examId: processedLead.examId || undefined
             }

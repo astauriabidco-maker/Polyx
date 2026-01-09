@@ -37,12 +37,18 @@ import { FilterService } from '@/application/services/filter.service';
 import { DynamicFilterBar } from '@/components/ui/dynamic-filter-bar';
 import { DailyObjectivesWidget } from './daily-objectives-widget';
 import { SalesScriptsWidget } from './sales-scripts-widget';
+import { PhoningSessionModal } from '@/components/sales/phoning-session-modal';
+import { getSalesMetricsAction } from '@/application/actions/metrics.actions';
+import { getVoiceSettingsAction } from '@/application/actions/communication.actions';
+import { Play } from 'lucide-react';
 
 // --- Sub-Components (Styled for Dark Mode) ---
 
+import { TransformationLeaderboard } from '../analytics/transformation-leaderboard';
+
 function SupervisionView({ leads, organisationId }: { leads: Lead[], organisationId: string }) {
     const totalLeads = leads.length;
-    const answered = leads.filter(l => l.status === LeadStatus.CONTACTED || l.status === LeadStatus.QUALIFIED).length;
+    const answered = leads.filter(l => l.status === LeadStatus.CONTACTED || l.status === LeadStatus.QUALIFIED || l.status === LeadStatus.RDV_FIXE).length;
     const answerRate = totalLeads ? Math.round((answered / totalLeads) * 100) : 0;
     const pipelineValue = leads.filter(l => l.score > 50).length * 1500;
 
@@ -55,21 +61,23 @@ function SupervisionView({ leads, organisationId }: { leads: Lead[], organisatio
                 <KPICard title="Délai Moyen" value="4h 12m" trend="-15m" trendDirection="up" icon={Clock} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-                    <h3 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
-                        <Activity className="text-indigo-500" />
-                        Flux d'Activité & ROI
-                    </h3>
-                    <div className="h-64 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-lg text-slate-600">
-                        [Chart Visualization: ROI per Source]
+                <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+                        <h3 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
+                            <Activity className="text-indigo-500" />
+                            Flux d'Activité & ROI
+                        </h3>
+                        <div className="h-64 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-lg text-slate-600">
+                            [Chart Visualization: ROI per Source]
+                        </div>
                     </div>
+                    <AgencyPerformanceStats organisationId={organisationId} />
                 </div>
                 <div className="space-y-6">
-                    <SmartTimingWidget />
+                    <TransformationLeaderboard orgId={organisationId} />
                     <AgentLeaderboard />
                 </div>
             </div>
-            <AgencyPerformanceStats organisationId={organisationId} />
         </div>
     );
 }
@@ -119,6 +127,14 @@ const LEAD_FIELDS: FieldDefinition[] = [
     { id: 'status', label: 'Statut', type: 'enum', options: Object.values(LeadStatus).map(s => ({ label: s, value: s })) },
     { id: 'source', label: 'Source', type: 'text' },
     { id: 'score', label: 'Score IA', type: 'number' },
+    {
+        id: 'pipeline', label: 'Pipeline', type: 'enum', options: [
+            { label: 'Nouveau Lead', value: 'NOUVEAU' },
+            { label: 'En cours', value: 'EN_COURS' },
+            { label: 'Relances / NRP', value: 'RELANCES' },
+            { label: 'RDV Validé', value: 'RDV_FIXE' }
+        ]
+    },
 ];
 
 export default function ProspectionDashboard({ initialLeads }: { initialLeads?: Lead[] }) {
@@ -140,7 +156,41 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
 
     // Filter Logic
     const [filterGroup, setFilterGroup] = useState<FilterGroup>({ id: 'root', conjunction: 'and', rules: [] });
-    const [groupBy, setGroupBy] = useState<string>('default');
+    const [groupBy, setGroupBy] = useState<string>('pipeline');
+
+    // Phoning Session State
+    const [isSessionActive, setIsSessionActive] = useState(false);
+    const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+
+    // Derive Session Candidates from loaded leads (Sync with Kanban)
+    const sessionCandidates = useMemo(() => {
+        return leads.filter(l =>
+            l.status === 'PROSPECT' ||
+            l.status === 'PROSPECTION' ||
+            (l.nextCallbackAt && new Date(l.nextCallbackAt) <= new Date())
+        ).filter(l => l.status !== 'ARCHIVED' && l.status !== 'DISQUALIFIED');
+    }, [leads]);
+
+    useEffect(() => {
+        if (activeOrganization && user) {
+            // Load Voice Settings
+            getVoiceSettingsAction(activeOrganization.id).then(res => {
+                if (res.success && res.data) setIsVoiceEnabled((res.data as any).voiceEnabled);
+            });
+        }
+    }, [activeOrganization, user]);
+
+    const handleStartSession = () => {
+        if (!isVoiceEnabled) {
+            alert("La téléphonie n'est pas activée. Veuillez contacter votre administrateur.");
+            return;
+        }
+        if (sessionCandidates.length === 0) {
+            alert("Aucun lead à rappeler pour le moment.");
+            return;
+        }
+        setIsSessionActive(true);
+    };
 
     useEffect(() => {
         if (activeOrganization) {
@@ -160,7 +210,7 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
         let showAll = currentScope === 'all';
         // Note: isUnifiedView might be redundant if scope='all' covers it, but kept for legacy support
 
-        const res = await getLeadsAction(activeOrganization.id, isUnifiedView || showAll, activeAgency?.id);
+        const res = await getLeadsAction(activeOrganization.id, isUnifiedView || showAll || groupBy === 'pipeline', activeAgency?.id);
         if (res.success && res.leads) {
             setLeads(hydrateLeads(res.leads));
         }
@@ -371,6 +421,25 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
 
                             {/* Right Panel - Gamification & Tools */}
                             <div className="w-72 shrink-0 flex flex-col gap-4 animate-in slide-in-from-right-4 duration-500 overflow-hidden">
+                                <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-900 border border-indigo-500/30 shadow-lg text-white">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="font-bold text-lg">Call Session</h3>
+                                            <p className="text-indigo-200 text-xs">{sessionCandidates.length} leads à traiter</p>
+                                        </div>
+                                        <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                                            <Phone className="text-white" size={20} />
+                                        </div>
+                                    </div>
+                                    <Button
+                                        onClick={handleStartSession}
+                                        className="w-full bg-white text-indigo-700 hover:bg-indigo-50 font-bold border-none"
+                                    >
+                                        <Play size={16} className="mr-2" />
+                                        Lancer la session
+                                    </Button>
+                                </div>
+
                                 {user && <DailyObjectivesWidget userId={user.id} />}
                                 <SalesScriptsWidget selectedLead={selectedLead} />
                             </div>
@@ -404,6 +473,14 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
                     organizationId={activeOrganization.id}
                     onClose={() => setShowCreateModal(false)}
                     onSuccess={(newLead) => { handleLeadUpdate(newLead); setShowCreateModal(false); }}
+                />
+            )}
+
+            {/* Phoning Session Modal */}
+            {isSessionActive && (
+                <PhoningSessionModal
+                    leads={sessionCandidates}
+                    onClose={() => setIsSessionActive(false)}
                 />
             )}
         </div>

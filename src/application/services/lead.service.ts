@@ -80,7 +80,7 @@ export class LeadService {
         }
 
         // 2. Data Completeness (+20 pts)
-        if (lead.email && (lead.phone || lead.mobile)) {
+        if (lead.email && lead.phone) {
             score += 20;
         }
 
@@ -155,7 +155,15 @@ export class LeadService {
                 newStatus = LeadStatus.PROSPECTION;
                 break;
 
+            case CallOutcome.ANSWERED:
+                // Spoke with lead, decision pending -> CONTACTED
+                newStatus = LeadStatus.CONTACTED;
+                break;
+
             case CallOutcome.NO_ANSWER:
+            case CallOutcome.BUSY:
+            case CallOutcome.VOICEMAIL:
+                // Failed to reach -> ATTEMPTED
                 newStatus = LeadStatus.ATTEMPTED;
                 if (updatedLead.callAttempts >= 6) {
                     // Auto-NRP rule after 6 attempts

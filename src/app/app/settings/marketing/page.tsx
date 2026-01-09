@@ -492,7 +492,7 @@ function WebhookSettings() {
         setIsLoading(true);
         const res = await getWebhookSettingsAction(activeOrganization.id);
         if (res.success) {
-            setWebhookSecret(res.secret);
+            setWebhookSecret(res.secret ?? null);
         }
         setIsLoading(false);
     };

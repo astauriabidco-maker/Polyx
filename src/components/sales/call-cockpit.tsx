@@ -9,10 +9,11 @@ import { iaOrchestrator } from '@/infrastructure/services/ia-orchestrator';
 import { CallOutcome, RefusalReason } from '@/domain/entities/lead';
 import { Lead, LeadStatus, LeadWithOrg } from '@/domain/entities/lead';
 
-import { getAgencyCollaboratorsAction, confirmLeadAppointmentAction } from '@/application/actions/agenda.actions';
+import { getAgencyCollaboratorsAction, getOrganizationCollaboratorsAction, confirmLeadAppointmentAction } from '@/application/actions/agenda.actions';
 import { logActivityAction } from '@/application/actions/lead.actions';
 import { useAuthStore } from '@/application/store/auth-store';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Phone, PhoneOff } from 'lucide-react';
+import { TwilioPhone, CallStatus, TwilioPhoneHandle } from './twilio-phone';
 
 interface CallCockpitProps {
     lead: LeadWithOrg;
@@ -45,6 +46,27 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
     const [selectedCollaboratorId, setSelectedCollaboratorId] = useState<string>('');
     const [isConfirming, setIsConfirming] = useState(false);
 
+    // VoIP State
+    const [voipStatus, setVoipStatus] = useState<CallStatus>('IDLE');
+    const [voipDuration, setVoipDuration] = useState(0);
+    const [isVoipEnabled, setIsVoipEnabled] = useState(true); // Toggle for VoIP vs Manual mode
+    const twilioPhoneRef = useRef<TwilioPhoneHandle>(null);
+
+    // Start VoIP Call
+    const startVoipCall = () => {
+        if (twilioPhoneRef.current && lead.phone) {
+            const cleanPhone = lead.phone.replace(/[^\d+]/g, '');
+            twilioPhoneRef.current.makeCall(cleanPhone);
+        }
+    };
+
+    // End VoIP Call
+    const endVoipCall = () => {
+        if (twilioPhoneRef.current) {
+            twilioPhoneRef.current.hangUp();
+        }
+    };
+
     // Handlers
     const handleAppointmentClick = () => setShowScheduler(true);
     const handleCallbackClick = () => setShowCallbackModal(true);
@@ -55,6 +77,20 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
         const message = encodeURIComponent(`Bonjour ${lead.firstName}, j'ai tenté de vous joindre à l'instant concernant votre demande sur ${organizationName}. Quand seriez-vous disponible pour un court échange ?`);
         window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
         onEndCall(CallOutcome.NO_ANSWER, { duration });
+    };
+
+    const handleWhatsAppCallClick = async (phone: string) => {
+        const cleanPhone = phone.replace(/\D/g, '');
+        window.open(`https://wa.me/call/${cleanPhone}`, '_blank');
+
+        if (activeUser) {
+            await logActivityAction({
+                leadId: lead.id,
+                userId: activeUser.id,
+                type: 'WHATSAPP_CALL',
+                content: 'Appel WhatsApp lancé depuis le cockpit'
+            });
+        }
     };
 
     const handleWhatsAppClick = async (phone: string) => {
@@ -90,11 +126,6 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
             return;
         }
 
-        if (!lead.agencyId) {
-            alert("Ce lead n'est pas associé à une agence. Impossible de fixer un RDV physique.");
-            return;
-        }
-
         setIsConfirming(true);
         const start = new Date(`${appointmentDate}T${appointmentTime}`);
         const end = new Date(start);
@@ -103,7 +134,7 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
         const res = await confirmLeadAppointmentAction({
             organisationId: lead.organizationId,
             leadId: lead.id,
-            agencyId: lead.agencyId!,
+            agencyId: lead.agencyId,
             userId: selectedCollaboratorId,
             start,
             end,
@@ -117,7 +148,7 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
             onEndCall(CallOutcome.APPOINTMENT_SET, { duration });
             setShowScheduler(false);
         } else {
-            alert(res.error || "Erreur lors de la confirmation du RDV");
+            alert((res as any).error || "Erreur lors de la confirmation du RDV");
         }
     };
 
@@ -149,61 +180,108 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
     // AI Insights
     const [suggestion, setSuggestion] = useState<{ title: string; content: string; type: 'OBJECTION' | 'Hint' } | null>(null);
 
+    // [Intelligence Live] WebSocket for real-time transcription
     useEffect(() => {
+        if (voipStatus !== 'CONNECTED') return;
+
+        console.log('[Live] Connecting to voice gateway...');
+        const gatewayUrl = process.env.NEXT_PUBLIC_VOICE_GATEWAY_URL || 'ws://localhost:8080';
+        const ws = new WebSocket(gatewayUrl);
+
+        ws.onopen = () => {
+            console.log('[Live] Gateway connected');
+            // We register the client. Note: For now we'll broadcast to all or use a generic init
+            // In a pro version, we'd send: ws.send(JSON.stringify({ event: 'client_init', callSid: lead.id }));
+            ws.send(JSON.stringify({ event: 'client_init', callSid: 'BROADCAST' }));
+        };
+
+        ws.onmessage = async (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.event === 'transcript') {
+                    if (data.isFinal) {
+                        setTranscript(prev => [...prev, data.text]);
+
+                        // [NEW] Analyze real transcript with AI
+                        const analysis = await iaOrchestrator.analyzeLiveInteraction(data.text);
+                        if (analysis.suggestion) {
+                            setSuggestion(analysis.suggestion);
+                        }
+                    } else {
+                        // Interim results...
+                    }
+                }
+            } catch (err) {
+                console.error('[Live] Message error:', err);
+            }
+        };
+
+        return () => {
+            console.log('[Live] Closing gateway connection');
+            ws.close();
+        };
+    }, [voipStatus]);
+
+    useEffect(() => {
+        // [MODIFIED] Removed mock transcription feed to let the real WebSocket take over
         // Timer
         const timer = setInterval(() => setDuration(d => d + 1), 1000);
 
-        // Mock Live Transcription Feed
-        const mockFeed = [
-            { t: 2, text: "Bonjour, je suis bien chez " + leadName + " ?" },
-            { t: 5, text: "Oui c'est moi." },
-            { t: 8, text: "Enchanté. Je vous appelle concernant votre demande pour la formation." },
-            { t: 12, text: "Ah oui, mais je trouve que c'est un peu cher..." }, // Trigger objection
-            { t: 20, text: "Je comprends. Mais avez-vous vérifié votre solde CPF ?" },
-            { t: 25, text: "Non pas encore." },
-            { t: 30, text: "C'est très intéressant, je pense le faire." } // Trigger positive
-        ];
-
-        let timeouts: NodeJS.Timeout[] = [];
-
-        mockFeed.forEach(msg => {
-            const timeout = setTimeout(async () => {
-                setTranscript(prev => [...prev, msg.text]);
-                // Analyze with AI
-                const analysis = await iaOrchestrator.analyzeLiveInteraction(msg.text);
-                if (analysis.suggestion) {
-                    setSuggestion(analysis.suggestion);
-                }
-            }, msg.t * 1000);
-            timeouts.push(timeout);
-        });
-
         return () => {
             clearInterval(timer);
-            timeouts.forEach(clearTimeout);
         };
-    }, [leadName]);
+    }, []);
 
     // [Step 2] Fetch Collaborators
+    // [Step 2] Fetch Collaborators (Agency OR Org Fallback)
+    // [Step 2] Fetch Collaborators (Agency OR Org Fallback)
     useEffect(() => {
-        if (lead.agencyId) {
-            getAgencyCollaboratorsAction(lead.agencyId).then(res => {
-                if (res.success && res.data) {
-                    const saneCollaborators = res.data.map(c => ({
-                        id: c.id,
-                        firstName: c.firstName || '',
-                        lastName: c.lastName || ''
-                    }));
-                    setCollaborators(saneCollaborators);
-                    // Default to first or current user if in list
-                    if (res.data.length > 0) {
-                        const me = (res.data as any[]).find(u => u.id === activeUser?.id);
-                        setSelectedCollaboratorId(me ? me.id : res.data[0].id);
-                    }
+        async function fetchCollaborators() {
+            let apiUsers: any[] = [];
+
+            // 1. Try Fetch from API
+            try {
+                let res;
+                if (lead.agencyId) {
+                    res = await getAgencyCollaboratorsAction(lead.agencyId);
+                } else {
+                    res = await getOrganizationCollaboratorsAction(lead.organizationId);
                 }
-            });
+                if (res.success && res.data) {
+                    apiUsers = res.data;
+                }
+            } catch (err) {
+                console.error("Failed to fetch collaborators", err);
+            }
+
+            // 2. Map Clean Data
+            const saneCollaborators = apiUsers.map(c => ({
+                id: c.id,
+                firstName: c.firstName || '',
+                lastName: c.lastName || ''
+            }));
+
+            // 3. Force include current user (Safety Net)
+            if (activeUser && !saneCollaborators.find(c => c.id === activeUser.id)) {
+                saneCollaborators.push({
+                    id: activeUser.id,
+                    firstName: activeUser.firstName || 'Moi',
+                    lastName: activeUser.lastName || ''
+                });
+            }
+
+            // 4. Update State
+            setCollaborators(saneCollaborators);
+
+            // 5. Default selection
+            if (saneCollaborators.length > 0) {
+                const me = saneCollaborators.find(u => u.id === activeUser?.id);
+                setSelectedCollaboratorId(me ? me.id : saneCollaborators[0].id);
+            }
         }
-    }, [lead.agencyId, activeUser?.id]);
+
+        fetchCollaborators();
+    }, [lead.agencyId, lead.organizationId, activeUser?.id]);
 
     const formatTime = (sec: number) => {
         const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -219,9 +297,18 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
             {/* Top Bar: Timer & Status */}
             <div className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-t-xl">
                 <div className="flex items-center gap-3">
-                    <div className="animate-pulse h-3 w-3 rounded-full bg-red-500" />
-                    <span className="font-mono text-xl font-bold text-red-100">{formatTime(duration)}</span>
-                    <span className="text-sm text-slate-400"> • En ligne avec {leadName}</span>
+                    {voipStatus === 'CONNECTED' && <div className="animate-pulse h-3 w-3 rounded-full bg-red-500" />}
+                    {voipStatus === 'CONNECTING' && <Loader2 className="animate-spin h-4 w-4 text-amber-400" />}
+                    {voipStatus === 'RINGING' && <Phone className="animate-bounce h-4 w-4 text-green-400" />}
+                    {voipStatus === 'IDLE' && <div className="h-3 w-3 rounded-full bg-slate-600" />}
+
+                    <span className="font-mono text-xl font-bold text-red-100">{formatTime(isVoipEnabled ? voipDuration : duration)}</span>
+                    <span className="text-sm text-slate-400">
+                        {voipStatus === 'IDLE' && `• Prêt à appeler ${leadName}`}
+                        {voipStatus === 'CONNECTING' && '• Connexion en cours...'}
+                        {voipStatus === 'RINGING' && '• Ça sonne...'}
+                        {voipStatus === 'CONNECTED' && `• En ligne avec ${leadName}`}
+                    </span>
                     {organizationName && <span className="text-xs bg-slate-800 text-indigo-300 px-2 py-1 rounded ml-2 border border-slate-700">{organizationName}</span>}
                     {recordingEnabled && (
                         <span className="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-red-100 border border-red-200 text-red-700 rounded text-[10px] font-black uppercase tracking-wider shadow-sm animate-pulse">
@@ -229,9 +316,38 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
                         </span>
                     )}
                 </div>
-                <div>
-                    <Button variant="outline" size="sm" onClick={() => onEndCall(CallOutcome.NO_ANSWER, { duration })} className="text-red-600 hover:bg-red-50 border-red-200">Hang Up</Button>
+                <div className="flex items-center gap-2">
+                    {voipStatus === 'IDLE' && (
+                        <Button
+                            onClick={startVoipCall}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            disabled={!lead.phone}
+                        >
+                            <Phone size={16} className="mr-2" /> Appeler
+                        </Button>
+                    )}
+                    {(voipStatus === 'CONNECTING' || voipStatus === 'RINGING' || voipStatus === 'CONNECTED') && (
+                        <Button
+                            onClick={endVoipCall}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            <PhoneOff size={16} className="mr-2" /> Raccrocher
+                        </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => onEndCall(CallOutcome.NO_ANSWER, { duration: isVoipEnabled ? voipDuration : duration })} className="text-slate-400 hover:text-white border-slate-600">Quitter</Button>
                 </div>
+            </div>
+
+            {/* Hidden TwilioPhone Component */}
+            <div className="hidden">
+                <TwilioPhone
+                    orgId={lead.organizationId}
+                    onStatusChange={setVoipStatus}
+                    onDurationUpdate={setVoipDuration}
+                    onCallEnd={(finalDuration) => setVoipDuration(finalDuration)}
+                    onError={(err) => console.error('[CallCockpit] VoIP Error:', err)}
+                    ref={twilioPhoneRef}
+                />
             </div>
 
             {/* Main Area: Split View */}
@@ -280,20 +396,27 @@ export function CallCockpit({ lead, onEndCall, recordingEnabled }: CallCockpitPr
                             </div>
 
                             {/* Multichannel Quick Actions */}
-                            <div className="mt-3 flex gap-2">
+                            <div className="mt-3 grid grid-cols-2 gap-2">
                                 <Button
                                     size="sm"
-                                    className="flex-1 gap-1 bg-[#25D366] hover:bg-[#128C7E] text-white h-8 text-xs border-none"
+                                    className="gap-1 bg-[#25D366] hover:bg-[#128C7E] text-white h-8 text-[10px] border-none"
                                     onClick={() => handleWhatsAppClick(lead.phone)}
                                 >
-                                    <MessageSquare size={14} /> WhatsApp
+                                    <MessageSquare size={12} /> Message
                                 </Button>
                                 <Button
                                     size="sm"
-                                    className="flex-1 gap-1 bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs border-none"
+                                    className="gap-1 bg-[#128C7E] hover:bg-[#075E54] text-white h-8 text-[10px] border-none"
+                                    onClick={() => handleWhatsAppCallClick(lead.phone)}
+                                >
+                                    <Phone size={12} /> Appel WA
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="col-span-2 gap-1 bg-blue-600 hover:bg-blue-700 text-white h-8 text-[10px] border-none"
                                     onClick={() => handleEmailClick(lead.email)}
                                 >
-                                    <Mail size={14} /> Email
+                                    <Mail size={12} /> Email
                                 </Button>
                             </div>
                         </div>

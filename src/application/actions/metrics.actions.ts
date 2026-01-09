@@ -16,12 +16,30 @@ export async function getSalesMetricsAction(userId: string, orgId: string) {
     today.setHours(0, 0, 0, 0);
 
     const myLeads = await prisma.lead.findMany({
-        where: { organisationId: orgId } // In real world: AND assignedToId: userId
+        where: { organisationId: orgId }, // In real world: AND assignedToId: userId
+        include: { organisation: { select: { name: true } } }
     });
 
-    const callsToDo = myLeads.filter(l => l.status === LeadStatus.PROSPECTION).length; // Mock logic
-    const opportunities = myLeads.filter(l => l.status === LeadStatus.QUALIFIED || l.status === LeadStatus.CONTACTED).length; // CONTACTED as proxy for Proposal
-    const salesThisMonth = myLeads.filter(l => l.status === LeadStatus.RDV_FIXE).length; // RDV_FIXE as proxy for Converted/Sale
+    // Logic for Session Cards:
+    // 1. Leads in PROSPECTION (to be called)
+    // 2. Leads in PROSPECT (New)
+    // 3. Overdue callbacks
+    const sessionCandidates = myLeads
+        .filter(l =>
+            l.status === LeadStatus.PROSPECTION ||
+            l.status === LeadStatus.PROSPECT ||
+            (l.nextCallbackAt && l.nextCallbackAt <= new Date())
+        )
+        .slice(0, 50) // Limit to 50 for a session
+        .map(l => ({
+            ...l,
+            organizationId: l.organisationId,
+            organizationName: (l as any).organisation?.name || 'My Org'
+        }));
+
+    const callsToDo = sessionCandidates.length;
+    const opportunities = myLeads.filter(l => l.status === LeadStatus.CONTACTED).length;
+    const salesThisMonth = myLeads.filter(l => l.status === LeadStatus.RDV_FIXE).length;
 
     return {
         success: true,
@@ -31,7 +49,8 @@ export async function getSalesMetricsAction(userId: string, orgId: string) {
             salesThisMonth,
             conversionRate: 15 // Mock %
         },
-        pipeline: myLeads.filter(l => l.status === LeadStatus.CONTACTED).slice(0, 5) // Recent 5 proposals
+        pipeline: myLeads.filter(l => l.status === LeadStatus.CONTACTED).slice(0, 5), // Recent 5 proposals
+        sessionCandidates
     };
 }
 
@@ -127,6 +146,66 @@ export async function getScriptPerformanceAction(orgId: string) {
 
     } catch (error) {
         console.error("Error fetching script performance:", error);
+        return { success: false, data: [] };
+    }
+}
+/**
+ * Get the transformation leaderboard for an organization.
+ * Calculates conversion rate: (RDV_FIXE Leads / Total Calls) * 100
+ */
+export async function getTransformationLeaderboardAction(orgId: string) {
+    try {
+        // 1. Get all users in the organization
+        const users = await prisma.user.findMany({
+            where: {
+                accessGrants: {
+                    some: { organisationId: orgId }
+                }
+            },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                image: true,
+            }
+        });
+
+        // 2. Fetch stats for each user
+        const leaderboardData = await Promise.all(users.map(async (user) => {
+            // Count total calls by this user
+            const totalCalls = await prisma.call.count({
+                where: { callerId: user.id }
+            });
+
+            // Count leads that reached RDV_FIXE status and were assigned to this user
+            // In a more complex system, we might track who explicitly 'closed' the lead,
+            // but for now, we use the assignedToId as the proxy for the closer.
+            const convertedLeads = await prisma.lead.count({
+                where: {
+                    organisationId: orgId,
+                    assignedToId: user.id,
+                    status: LeadStatus.RDV_FIXE
+                }
+            });
+
+            return {
+                id: user.id,
+                name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Agent Anonyme',
+                image: user.image,
+                totalCalls,
+                convertedLeads,
+                rate: totalCalls > 0 ? Math.round((convertedLeads / totalCalls) * 100) : 0
+            };
+        }));
+
+        // Sort by transformation rate
+        return {
+            success: true,
+            data: leaderboardData.sort((a, b) => b.rate - a.rate)
+        };
+
+    } catch (error) {
+        console.error("Error fetching transformation leaderboard:", error);
         return { success: false, data: [] };
     }
 }

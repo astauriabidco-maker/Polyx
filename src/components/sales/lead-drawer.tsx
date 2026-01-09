@@ -58,15 +58,19 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
     const [isSharingLink, setIsSharingLink] = useState(false);
+    const [callLogDefaults, setCallLogDefaults] = useState<{ outcome?: CallOutcome, notes?: string } | null>(null);
 
     useEffect(() => {
         setMounted(true);
         if (lead) {
             document.body.style.overflow = 'hidden';
             setIsCallActive(false);
+            setCallLogDefaults(null);
 
             // Fetch Sales Reps for assignment
+            console.log("LeadDrawer: Fetching Sales Reps for org:", lead.organizationId);
             getSalesRepsAction(lead.organizationId).then(res => {
+                console.log("LeadDrawer: Sales Reps response:", res);
                 if (res.success && res.users) {
                     setSalesReps(res.users);
                 }
@@ -83,7 +87,7 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
         return () => {
             document.body.style.overflow = 'unset';
         };
-    }, []);
+    }, [lead]);
 
     const [isRefreshingScore, setIsRefreshingScore] = useState(false);
 
@@ -140,6 +144,10 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
             userId: activeUser?.id || 'SYSTEM',
             metadata: { channel: 'WHATSAPP_CALL' }
         });
+
+        // Auto-open log modal for WhatsApp
+        setCallLogDefaults({ outcome: 'ANSWERED' as CallOutcome, notes: 'Appel WhatsApp lancé' });
+        setShowCallLogModal(true);
     };
 
 
@@ -147,34 +155,26 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
         setIsCallActive(false);
         if (!lead) return;
 
-        const duration = data?.duration || 0;
-        await logCallAction({
-            leadId: lead.id,
-            duration,
-            outcome,
-            notes: outcome === CallOutcome.APPOINTMENT_SET ? 'RDV pris via Cockpit' : 'Appel via Cockpit',
-            callerId: activeUser?.id || 'SYSTEM'
-        });
-
-        const updatedLogic = LeadService.registerInteraction(lead, activeUser?.id || 'SYSTEM', outcome, {
-            note: outcome === CallOutcome.APPOINTMENT_SET ? 'RDV pris via Cockpit' : 'Logged from Cockpit'
-        });
-
-        const result = await updateLeadAction(lead.id, updatedLogic);
-
-        if (result.success && result.lead) {
-            onUpdate(result.lead);
-        } else {
-            onUpdate(updatedLogic);
-            console.error("Failed to persist call outcome");
-        }
-
         if (outcome === CallOutcome.APPOINTMENT_SET) {
+            // Log meeting confirmed technical call record
+            await logCallAction({
+                leadId: lead.id,
+                duration: data?.duration || 0,
+                outcome,
+                notes: 'RDV pris via Cockpit',
+                callerId: activeUser?.id || 'SYSTEM'
+            });
             alert('Félicitations ! Vente/RDV validé. Le dossier est transféré au Closing.');
             onClose();
-        } else if (outcome === CallOutcome.REFUSAL) {
-            onClose();
+            return;
         }
+
+        // For all other outcomes, open the detailed Log Modal automatically
+        setCallLogDefaults({
+            outcome,
+            notes: outcome === CallOutcome.CALLBACK_SCHEDULED ? 'Rappel planifié depuis Cockpit' : 'Appel via Cockpit'
+        });
+        setShowCallLogModal(true);
     };
 
     return createPortal(
@@ -506,7 +506,10 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                             <Button
                                 variant="outline"
                                 className="flex-1 min-w-[120px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-                                onClick={() => setShowCallLogModal(true)}
+                                onClick={() => {
+                                    setCallLogDefaults(null);
+                                    setShowCallLogModal(true);
+                                }}
                             >
                                 <PhoneOff size={16} /> Log Appel
                             </Button>
@@ -526,8 +529,13 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                     <CallLogModal
                         leadId={lead.id}
                         leadName={`${lead.firstName} ${lead.lastName}`}
-                        onClose={() => setShowCallLogModal(false)}
+                        onClose={() => {
+                            setShowCallLogModal(false);
+                            setCallLogDefaults(null);
+                        }}
                         onSuccess={() => setActiveTab('history')}
+                        defaultOutcome={callLogDefaults?.outcome as any}
+                        defaultNotes={callLogDefaults?.notes}
                     />
                 )}
 

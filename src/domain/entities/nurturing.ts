@@ -1,6 +1,7 @@
 export enum NurturingType {
     SMS = 'SMS',
-    EMAIL = 'EMAIL'
+    EMAIL = 'EMAIL',
+    WHATSAPP = 'WHATSAPP'
 }
 
 export enum NurturingChannel {

@@ -52,7 +52,7 @@ export default function SuperAdminDashboard() {
     const [orgs, setOrgs] = useState<any[]>([]);
 
     useEffect(() => {
-        if (user && !user.isGlobalAdmin) {
+        if (user && !(user as any).isGlobalAdmin) {
             router.push('/app');
         }
     }, [user, router]);

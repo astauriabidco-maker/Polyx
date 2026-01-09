@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { NurturingEnrollmentStatus, NurturingTaskStatus } from '@/domain/entities/nurturing';
 import { addHours } from 'date-fns';
+import { TwilioService } from './twilio.service';
 
+/**
+ * Nurturing Service
+ * Manages campaigns, sequences and automatic tasks (Email, SMS, WhatsApp)
+ */
 export class NurturingService {
     /**
      * Enrolls a lead into a sequence.
@@ -16,8 +21,8 @@ export class NurturingService {
 
         if (!sequence) throw new Error('Sequence not found');
 
-        // 2. Cancel existing active enrollments for this sequence/lead if any
-        await this.cancelLeadEnrollments(leadId, sequenceId);
+        // 2. Cancel existing active enrollments for this lead
+        await this.cancelLeadEnrollments(leadId);
 
         // 3. Create Enrollment
         const enrollment = await prisma.nurturingEnrollment.create({
@@ -47,8 +52,8 @@ export class NurturingService {
                     organisationId,
                     enrollmentId: enrollment.id,
                     stepId: step.id,
-                    type: step.type,
-                    channel: step.channel,
+                    type: step.type as any,
+                    channel: step.channel as any,
                     scheduledAt,
                     status: NurturingTaskStatus.PENDING,
                     content: hydratedContent,
@@ -61,13 +66,12 @@ export class NurturingService {
     }
 
     /**
-     * Cancels all active enrollments for a lead (optionally filtered by sequence).
+     * Cancels all active enrollments for a lead.
      */
-    static async cancelLeadEnrollments(leadId: string, sequenceId?: string) {
-        const where: any = { leadId, status: NurturingEnrollmentStatus.ACTIVE };
-        if (sequenceId) where.sequenceId = sequenceId;
-
-        const activeEnrollments = await prisma.nurturingEnrollment.findMany({ where });
+    static async cancelLeadEnrollments(leadId: string) {
+        const activeEnrollments = await prisma.nurturingEnrollment.findMany({
+            where: { leadId, status: NurturingEnrollmentStatus.ACTIVE }
+        });
 
         for (const enrollment of activeEnrollments) {
             // Cancel tasks
@@ -88,6 +92,58 @@ export class NurturingService {
     }
 
     /**
+     * Triggers the automatic NRP relance sequence.
+     * Sequence: WhatsApp (Immediate/1h) -> SMS (24h) -> WhatsApp (48h)
+     */
+    static async triggerNrpRelance(leadId: string, organisationId: string) {
+        const SEQUENCE_NAME = "Relance NRP (Automatique)";
+
+        // 1. Find the sequence
+        let sequence = await prisma.nurturingSequence.findFirst({
+            where: { organisationId, name: SEQUENCE_NAME, isActive: true }
+        });
+
+        // 2. Create default if missing
+        if (!sequence) {
+            sequence = await prisma.nurturingSequence.create({
+                data: {
+                    organisationId,
+                    name: SEQUENCE_NAME,
+                    description: "Séquence automatique lancée après un appel sans réponse (NRP).",
+                    steps: {
+                        create: [
+                            {
+                                order: 1,
+                                type: 'WHATSAPP',
+                                channel: 'WHATSAPP',
+                                delayInHours: 1, // Start 1h after call
+                                content: "Bonjour {{firstName}}, j'ai tenté de vous joindre concernant votre demande de formation. N'hésitez pas à me dire quand vous seriez disponible pour un court échange. Bonne journée !"
+                            },
+                            {
+                                order: 2,
+                                type: 'SMS',
+                                channel: 'SMS',
+                                delayInHours: 23, // Total 24h
+                                content: "Bonjour {{firstName}}, je reviens vers vous concernant votre projet. Vous pouvez me rappeler au {{phone}} ou répondre à ce message. Merci !"
+                            },
+                            {
+                                order: 3,
+                                type: 'WHATSAPP',
+                                channel: 'WHATSAPP',
+                                delayInHours: 24, // Total 48h
+                                content: "Dernière tentative pour vous joindre {{firstName}}, n'hésitez pas à revenir vers nous si votre projet est toujours d'actualité. Excellente journée !"
+                            }
+                        ]
+                    }
+                }
+            });
+        }
+
+        // 3. Enroll the lead
+        return await this.enrollLead(leadId, sequence.id, organisationId);
+    }
+
+    /**
      * Processes pending tasks that are due.
      */
     static async processDueTasks() {
@@ -102,13 +158,28 @@ export class NurturingService {
 
         for (const task of dueTasks) {
             try {
-                // 1. Simulate sending (Log to activity)
+                // 1. Send via real provider if configured
+                if (task.channel === 'SMS' || task.channel === 'WHATSAPP') {
+                    const twilio = await TwilioService.create(task.organisationId);
+                    if (twilio && task.lead.phone) {
+                        if (task.channel === 'SMS') {
+                            await twilio.sendSms(task.lead.phone, task.content);
+                        } else {
+                            await twilio.sendWhatsApp(task.lead.phone, task.content);
+                        }
+                        console.log(`[Nurturing] Sent ${task.channel} to ${task.lead.phone}`);
+                    } else {
+                        console.log(`[Nurturing] Simulation only for task ${task.id} (Twilio not configured)`);
+                    }
+                }
+
+                // 2. Log to activity
                 await prisma.leadActivity.create({
                     data: {
                         leadId: task.leadId,
                         userId: 'SYSTEM',
-                        type: task.type === 'SMS' ? 'SMS' : 'EMAIL',
-                        content: `[Automatique] ${task.content}`,
+                        type: 'COMMUNICATION' as any,
+                        content: `[Automatique ${task.channel}] ${task.content}`,
                         metadata: JSON.stringify({
                             nurturingTaskId: task.id,
                             channel: task.channel
@@ -116,7 +187,7 @@ export class NurturingService {
                     }
                 });
 
-                // 2. Mark as executed
+                // 3. Mark as executed
                 await prisma.nurturingTask.update({
                     where: { id: task.id },
                     data: {
@@ -125,7 +196,7 @@ export class NurturingService {
                     }
                 });
 
-                // 3. Auto-complete enrollment if no tasks left
+                // 4. Auto-complete enrollment if no tasks left
                 if (task.enrollmentId) {
                     const remainingTasksCount = await prisma.nurturingTask.count({
                         where: {

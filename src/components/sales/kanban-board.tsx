@@ -30,6 +30,25 @@ export function KanbanBoard({ leads, allLeads = [], onLeadClick, isUnifiedView, 
             { id: 'priority', title: 'Prioritaires (IA)', items: LeadService.getPriorityQueue(allLeads) },
             { id: 'callbacks', title: 'Rappels', items: LeadService.getCallbackQueue(allLeads) }
         ];
+    } else if (groupBy === 'pipeline') {
+        const pipelineStages = [
+            { id: 'NOUVEAU', title: 'Nouveau Lead', filter: (l: Lead) => l.salesStage === 'NOUVEAU' || l.score > 80 },
+            { id: 'EN_COURS', title: 'En cours', filter: (l: Lead) => (l.status === 'PROSPECTION' || l.status === 'CONTACTED') && l.salesStage !== 'NOUVEAU' },
+            { id: 'RELANCES', title: 'Relances / NRP', filter: (l: Lead) => l.status === 'ATTEMPTED' || l.status === 'NRP' },
+            { id: 'RDV_FIXE', title: 'RDV Validé', filter: (l: Lead) => l.status === 'RDV_FIXE' || l.salesStage === 'RDV_FIXE' }
+        ];
+
+        columns = pipelineStages.map(stage => ({
+            id: stage.id,
+            title: stage.title,
+            items: leads.filter(stage.filter)
+        }));
+
+        totalColumns = pipelineStages.map(stage => ({
+            id: stage.id,
+            title: stage.title,
+            items: allLeads.filter(stage.filter)
+        }));
     } else {
         columns = GroupingService.groupBy(leads, groupBy as keyof Lead);
         totalColumns = GroupingService.groupBy(allLeads, groupBy as keyof Lead);

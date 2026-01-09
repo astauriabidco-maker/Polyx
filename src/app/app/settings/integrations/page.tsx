@@ -28,7 +28,15 @@ import {
     RefreshCw,
     Unlink,
     MapPin,
-    CheckCircle
+    CheckCircle,
+    Brain,
+    Sparkles,
+    GraduationCap,
+    BookOpen,
+    Building2,
+    Receipt,
+    FileText,
+    Send
 } from 'lucide-react';
 
 import { useToast } from "@/components/ui/use-toast";
@@ -100,7 +108,8 @@ import {
     testTwilioConnectionAction,
     saveVoiceConfigAction,
     getVoiceSettingsAction,
-    testVoiceConnectionAction
+    testVoiceConnectionAction,
+    testDeepgramConnectionAction
 } from '@/application/actions/communication.actions';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -680,8 +689,8 @@ export default function IntegrationsPage() {
                 {/* ═══════════════════════════════════════════════════════════════════════════════
                     COMMUNICATION OMNICANALE
                 ═══════════════════════════════════════════════════════════════════════════════ */}
-                <TwilioCard orgId={activeOrganization.id} />
                 <VoiceIntegrationCard orgId={activeOrganization.id} />
+                <VoiceIntelligenceCard orgId={activeOrganization.id} />
                 <SendGridCard orgId={activeOrganization.id} />
                 <GoogleCalendarCard orgId={activeOrganization.id} />
 
@@ -1875,6 +1884,135 @@ function VoiceIntegrationCard({ orgId }: { orgId?: string }) {
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white">
                         {isSaving && <Loader2 className="mr-2 animate-spin" />} Enregistrer
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOICE INTELLIGENCE CARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function VoiceIntelligenceCard({ orgId }: { orgId?: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+    const [enabled, setEnabled] = useState(false);
+    const [config, setConfig] = useState<any>({
+        deepgramApiKey: '',
+        voiceGatewayUrl: 'ws://localhost:8080',
+        sttLanguage: 'fr-FR',
+        smartFormatting: true
+    });
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (orgId) loadSettings();
+    }, [orgId]);
+
+    async function loadSettings() {
+        setIsLoading(true);
+        const res = await getVoiceSettingsAction(orgId!) as any;
+        if (res.success && res.data) {
+            setEnabled(res.data.voiceEnabled || false);
+            if (res.data.voiceConfig) {
+                setConfig({
+                    ...config,
+                    ...res.data.voiceConfig,
+                    // If it's a masked key from DB, we keep the mask
+                });
+            }
+        }
+        setIsLoading(false);
+    }
+
+    async function handleSave() {
+        setIsSaving(true);
+        const res = await saveVoiceConfigAction(orgId!, {
+            provider: 'TWILIO', // Fixed for now as it's the only one supporting streams
+            enabled,
+            recordingEnabled: true,
+            config
+        });
+        if (res.success) toast({ title: "Intelligence Voice sauvegardée 🧠" });
+        else toast({ title: "Erreur", description: res.error, variant: "destructive" });
+        setIsSaving(false);
+    }
+
+    async function handleTest() {
+        setIsTesting(true);
+        const res = await testDeepgramConnectionAction(config.deepgramApiKey);
+        if (res.success) toast({ title: "Deepgram OK ✅" });
+        else toast({ title: "Échec Deepgram", description: res.error, variant: "destructive" });
+        setIsTesting(false);
+    }
+
+    const setConfigField = (field: string, value: any) => {
+        setConfig((prev: any) => ({ ...prev, [field]: value }));
+    };
+
+    if (isLoading) return <Card><CardContent className="p-6">Chargement Intelligence...</CardContent></Card>;
+
+    return (
+        <Card className="border-slate-200 shadow-md">
+            <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4">
+                <div className="flex items-center gap-3">
+                    <Brain size={24} />
+                    <div>
+                        <CardTitle className="text-lg">Intelligence Temps Réel</CardTitle>
+                        <CardDescription className="text-purple-100 text-xs">Transcription live & Aide à la vente IA</CardDescription>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+                <div className="space-y-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="space-y-1">
+                        <Label className="text-xs">Deepgram API Key (STT)</Label>
+                        <Input
+                            type="password"
+                            value={config.deepgramApiKey || ''}
+                            onChange={e => setConfigField('deepgramApiKey', e.target.value)}
+                            placeholder="Entez votre clé Deepgram"
+                            className="h-8 text-xs font-mono"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Voice Gateway URL (WebSocket)</Label>
+                        <Input
+                            value={config.voiceGatewayUrl || ''}
+                            onChange={e => setConfigField('voiceGatewayUrl', e.target.value)}
+                            placeholder="ws://..."
+                            className="h-8 text-xs font-mono"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <Label className="text-xs">Langue STT</Label>
+                            <Select value={config.sttLanguage} onValueChange={v => setConfigField('sttLanguage', v)}>
+                                <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Langue" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="fr-FR">Français</SelectItem>
+                                    <SelectItem value="en-US">Anglais</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center justify-between pt-4">
+                            <Label className="text-xs">Smart Format</Label>
+                            <Switch checked={config.smartFormatting} onCheckedChange={v => setConfigField('smartFormatting', v)} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                    <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting || !config.deepgramApiKey}>
+                        {isTesting && <Loader2 className="mr-2 animate-spin" size={12} />} Tester Deepgram
+                    </Button>
+                    <Button onClick={handleSave} size="sm" disabled={isSaving} className="ml-auto bg-purple-600 hover:bg-purple-700 text-white">
+                        {isSaving && <Loader2 className="mr-2 animate-spin" size={12} />} Sauvegarder
                     </Button>
                 </div>
             </CardContent>

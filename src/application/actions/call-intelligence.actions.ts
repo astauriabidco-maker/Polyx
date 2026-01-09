@@ -141,7 +141,7 @@ export async function bulkAnalyzeCallsAction(leadId: string) {
             where: {
                 leadId,
                 notes: { not: null },
-                aiAnalysis: null
+                aiAnalysis: { equals: null } as any
             },
             include: { lead: { include: { organisation: true } } }
         });

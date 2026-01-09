@@ -587,7 +587,7 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                             </TabsContent>
 
                             <TabsContent value="history" className="space-y-6">
-                                {learner.leadId ? (
+                                {(learner as any).leadId ? (
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="text-sm font-bold text-slate-600 uppercase tracking-wider">Fil d'Activité Unifié</CardTitle>
@@ -596,7 +596,7 @@ export default function LearnerDetailsPage({ params }: { params: Promise<{ id: s
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <ActivityTimeline leadId={learner.leadId} />
+                                            <ActivityTimeline leadId={(learner as any).leadId} />
                                         </CardContent>
                                     </Card>
                                 ) : (

@@ -42,6 +42,7 @@ export async function createAppointmentAction(data: {
     start: Date;
     end: Date;
     type?: string;
+    shouldRevalidate?: boolean; // Added control
 }) {
     try {
         console.log(`[AgendaAction] 🆕 Creating appointment: ${data.title}`);
@@ -96,7 +97,15 @@ export async function createAppointmentAction(data: {
 
         const event = await (prisma as any).calendarEvent.create({
             data: {
-                ...data,
+                organisationId: data.organisationId,
+                agencyId: data.agencyId,
+                leadId: data.leadId,
+                userId: data.userId,
+                title: data.title,
+                description: data.description,
+                start: data.start,
+                end: data.end,
+                type: data.type,
                 status: 'SCHEDULED',
                 metadata
             }
@@ -113,7 +122,10 @@ export async function createAppointmentAction(data: {
             // await GoogleCalendarService.syncEvent(event.id, user.googleRefreshToken);
         }
 
-        revalidatePath('/app/agenda');
+        if (data.shouldRevalidate !== false) {
+            revalidatePath('/app/agenda');
+        }
+
         return { success: true, data: event };
     } catch (error) {
         console.error('[AgendaAction] Error creating appointment:', error);
@@ -672,12 +684,13 @@ export async function completeAppointmentAction(eventId: string, data: {
 export async function confirmLeadAppointmentAction(data: {
     organisationId: string;
     leadId: string;
-    agencyId: string;
+    agencyId?: string; // Made optional to fix crash
     userId: string; // The host commercial
     start: Date;
     end: Date;
     title: string;
     callerId: string; // The agent making the call
+    shouldRevalidate?: boolean;
 }) {
     try {
         console.log(`[AgendaAction] 🏠 Confirming Appointment for Lead ${data.leadId}`);
@@ -691,7 +704,8 @@ export async function confirmLeadAppointmentAction(data: {
             title: data.title,
             start: data.start,
             end: data.end,
-            type: 'MEETING'
+            type: 'MEETING',
+            shouldRevalidate: false // Prevent nested revalidation
         });
 
         if (!appointmentResult.success) return appointmentResult;
@@ -719,13 +733,56 @@ export async function confirmLeadAppointmentAction(data: {
             data: {
                 status: LeadStatus.RDV_FIXE,
                 salesStage: SalesStage.RDV_FIXE,
-                nextCallbackAt: data.start,
-                history: history as any,
-                updatedAt: new Date()
+                closingData: {}
             }
         });
 
-        // 3. Send Notifications
+        // Log history separately
+        await (prisma as any).leadActivity.create({
+            data: {
+                leadId: data.leadId,
+                userId: data.userId,
+                type: 'STATUS_CHANGE',
+                content: 'Lead confirmé -> RDV Fixé'
+            }
+        });// 3. [NEW] CRM Bridge: Create Learner (Dossier Client)
+        // Check if learner already exists for this lead
+        const existingLearner = await (prisma as any).learner.findUnique({
+            where: { leadId: data.leadId }
+        });
+
+        if (!existingLearner) {
+            console.log(`[AgendaAction] 🚀 Bridging Lead ${data.leadId} to Learner Folder`);
+            await (prisma as any).learner.create({
+                data: {
+                    organisationId: data.organisationId,
+                    leadId: data.leadId,
+                    // Copy Lead Info
+                    firstName: lead.firstName,
+                    lastName: lead.lastName,
+                    email: lead.email || '',
+                    phone: lead.phone,
+                    // Address
+                    address: lead.street,
+                    postalCode: lead.zipCode,
+                    city: lead.city,
+                    // Link Agency
+                    agencyId: data.agencyId || lead.agencyId,
+                    // Initialize Status
+                    folders: {
+                        create: {
+                            status: 'ONBOARDING',
+                            fundingType: 'PERSO', // Default, to be qualified
+                            complianceStatus: 'PENDING'
+                        }
+                    }
+                }
+            });
+        } else {
+            console.log(`[AgendaAction] ℹ️ Learner already exists for Lead ${data.leadId}`);
+        }
+
+        // 4. Send Notifications
         const leadName = `${lead.firstName} ${lead.lastName}`;
         const appointmentDateStr = new Date(data.start).toLocaleString('fr-FR', {
             weekday: 'long',
@@ -736,11 +793,13 @@ export async function confirmLeadAppointmentAction(data: {
         });
 
         // SMS to Lead
-        await SmsService.send(
-            data.organisationId,
-            lead.phone || lead.mobile || '',
-            `Bonjour ${lead.firstName}, votre rendez-vous en agence est confirmé pour le ${appointmentDateStr}. À bientôt chez Polyx !`
-        );
+        if (lead.phone || lead.mobile) {
+            await SmsService.send(
+                data.organisationId,
+                lead.phone || lead.mobile || '',
+                `Bonjour ${lead.firstName}, votre rendez-vous en agence est confirmé pour le ${appointmentDateStr}. À bientôt chez Polyx !`
+            );
+        }
 
         // Email to Host (Commercial)
         const host = await prisma.user.findUnique({ where: { id: data.userId } });
@@ -754,27 +813,33 @@ export async function confirmLeadAppointmentAction(data: {
                         <p>Bonjour ${host.firstName},</p>
                         <p>Un nouveau rendez-vous a été fixé pour un lead qualifié :</p>
                         <ul>
-                            <li><strong>Client :</strong> ${leadName}</li>
+                            <li><strong>Lead :</strong> ${leadName}</li>
                             <li><strong>Date :</strong> ${appointmentDateStr}</li>
-                            <li><strong>Lieu :</strong> En agence</li>
+                            <li><strong>Téléphone :</strong> ${lead.phone || lead.mobile || 'N/A'}</li>
                         </ul>
-                        <p>Retrouvez tous les détails dans votre module CRM.</p>
-                        <br/>
-                        <p>L'équipe Polyx</p>
+                        <p>Le dossier a été transféré dans la section <a href="${process.env.NEXT_PUBLIC_APP_URL}/app/crm">Mes Clients</a>.</p>
                     </div>
                 `
             });
         }
 
-        revalidatePath('/app/crm');
-        revalidatePath('/app/sales');
-        revalidatePath('/app/agenda');
+        // 5. Revalidate Paths
+        const shouldRevalidate = data.shouldRevalidate !== false; // Default true
+        console.log(`[AgendaAction] 🏁 Finishing confirmation. shouldRevalidate: ${shouldRevalidate} (raw: ${data.shouldRevalidate})`);
 
-        return { success: true, data: appointmentResult.data };
+        if (shouldRevalidate) {
+            console.log(`[AgendaAction] 🔄 Revalidating paths...`);
+            revalidatePath(`/app/crm`);
+            revalidatePath(`/app/sales`);
+            revalidatePath(`/app/leads/${data.leadId}`);
+        } else {
+            console.log(`[AgendaAction] 🛑 Skipping revalidation as requested.`);
+        }
+
+        return { success: true };
 
     } catch (error) {
         console.error('[AgendaAction] Error confirming appointment:', error);
         return { success: false, error: 'Failed to confirm appointment workflow' };
     }
 }
-
