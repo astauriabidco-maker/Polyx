@@ -30,6 +30,7 @@ export interface BulkLeadResponse {
     created: number;
     created_prospection: number;
     created_crm: number;
+    quarantined: number;
     total: number;
     errors: BulkLeadError[];
 }

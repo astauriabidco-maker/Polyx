@@ -3,6 +3,12 @@ import { Organization } from '@/domain/entities/organization';
 import { Role, SYSTEM_ROLES } from '@/domain/entities/permission';
 import { Lead, LeadStatus, LeadSource, CallOutcome, RefusalReason } from '@/domain/entities/lead';
 
+export interface AuditLog {
+    timestamp: Date;
+    event: string;
+    description: string;
+}
+
 export interface ApiProvider {
     id: string;
     name: string;
@@ -30,7 +36,14 @@ export interface ApiProvider {
 
     // Onboarding
     onboardingToken?: string;
+    onboardingExpiresAt?: Date;
     signatureUrl?: string; // base64 or url
+
+    // Security
+    allowedIPs?: string[]; // IP Whitelisting (optional)
+
+    // Tracking
+    auditLogs: AuditLog[];
 }
 
 export interface LegalDocument {
@@ -232,7 +245,11 @@ export class MockDB {
                     status: 'ACTIVE'
                 },
                 complianceStatus: 'VERIFIED',
-                dpaSignedAt: new Date('2024-01-10')
+                dpaSignedAt: new Date('2024-01-10'),
+                auditLogs: [
+                    { timestamp: new Date('2024-01-01'), event: 'CREATED', description: 'Partenaire créé par l\'admin' },
+                    { timestamp: new Date('2024-01-10'), event: 'ONBOARDING_COMPLETED', description: 'DPA signé et clé API activée' }
+                ]
             },
             {
                 id: 'prov-2',
@@ -255,7 +272,11 @@ export class MockDB {
                     status: 'ACTIVE'
                 },
                 complianceStatus: 'VERIFIED',
-                dpaSignedAt: new Date('2024-02-05')
+                dpaSignedAt: new Date('2024-02-05'),
+                auditLogs: [
+                    { timestamp: new Date('2024-02-01'), event: 'CREATED', description: 'Partenaire Facebook Ads créé' },
+                    { timestamp: new Date('2024-02-05'), event: 'ONBOARDING_COMPLETED', description: 'Onboarding réussi' }
+                ]
             }
         ];
 

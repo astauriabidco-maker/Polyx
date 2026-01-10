@@ -45,6 +45,8 @@ import { Play } from 'lucide-react';
 // --- Sub-Components (Styled for Dark Mode) ---
 
 import { TransformationLeaderboard } from '../analytics/transformation-leaderboard';
+import { SourcePerformanceComparator } from '../analytics/source-performance-comparator';
+import { DuplicateAnalysisReport } from '../analytics/duplicate-analysis-report';
 
 function SupervisionView({ leads, organisationId }: { leads: Lead[], organisationId: string }) {
     const totalLeads = leads.length;
@@ -62,15 +64,8 @@ function SupervisionView({ leads, organisationId }: { leads: Lead[], organisatio
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-                        <h3 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
-                            <Activity className="text-indigo-500" />
-                            Flux d'Activité & ROI
-                        </h3>
-                        <div className="h-64 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-lg text-slate-600">
-                            [Chart Visualization: ROI per Source]
-                        </div>
-                    </div>
+                    <SourcePerformanceComparator />
+                    <DuplicateAnalysisReport />
                     <AgencyPerformanceStats organisationId={organisationId} />
                 </div>
                 <div className="space-y-6">
@@ -82,37 +77,13 @@ function SupervisionView({ leads, organisationId }: { leads: Lead[], organisatio
     );
 }
 
-function ConfigView() {
-    const router = require('next/navigation').useRouter();
+import { LeadSourcesManager } from './lead-sources-manager';
+
+function ConfigView({ organisationId }: { organisationId: string }) {
     return (
-        <div className="p-6 h-full overflow-y-auto flex justify-center">
-            <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                <h2 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-3">
-                    <Settings className="text-indigo-500" />
-                    Configuration du Flux
-                </h2>
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                        <h4 className="font-bold text-slate-300 mb-2">Import CSV</h4>
-                        <Button
-                            variant="outline"
-                            className="w-full border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
-                            onClick={() => router.push('/app/leads/import')}
-                        >
-                            Importer
-                        </Button>
-                    </div>
-                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                        <h4 className="font-bold text-slate-300 mb-2">Webhooks</h4>
-                        <Button
-                            variant="outline"
-                            className="w-full border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
-                            onClick={() => router.push('/app/settings/marketing')}
-                        >
-                            Configurer
-                        </Button>
-                    </div>
-                </div>
+        <div className="p-6 h-full overflow-y-auto">
+            <div className="max-w-4xl mx-auto">
+                <LeadSourcesManager orgId={organisationId} />
             </div>
         </div>
     );
@@ -460,7 +431,7 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
                     ) : (
                         <div className="h-full overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
                             {activeTab === 'supervision' && <SupervisionView leads={leads} organisationId={activeOrganization?.id || ''} />}
-                            {activeTab === 'config' && <ConfigView />}
+                            {activeTab === 'config' && <ConfigView organisationId={activeOrganization?.id || ''} />}
                         </div>
                     )}
                 </div>

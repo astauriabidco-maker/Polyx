@@ -67,16 +67,22 @@ export class LeadService {
     // --- Interaction Logic ---
 
     /**
-     * Advanced Weighted Scoring Engine
-     * Calculates score based on Source, Freshness, and Data Completeness.
+     * Advanced Weighted Scoring Engine (Business-Centric V2)
+     * Prioritizes Speed-to-Lead and Financing Eligibility.
      */
     static calculateScore(lead: Partial<Lead>): number {
         let score = 30; // Base score
 
-        // 1. Source Weight (Premium Sources = +40/50 pts)
-        const premiumSources = ['facebook_ads', 'google_ads', 'landing_page', 'recommandation'];
-        if (lead.source && premiumSources.includes(lead.source.toLowerCase())) {
-            score += 40;
+        // 1. Freshness Weight (Speed-to-Lead) - CRITICAL
+        const createdAt = lead.createdAt ? new Date(lead.createdAt).getTime() : Date.now();
+        const now = Date.now();
+        const fifteenMinAgo = now - (15 * 60 * 1000);
+        const twoHoursAgo = now - (2 * 60 * 60 * 1000);
+
+        if (createdAt > fifteenMinAgo) {
+            score += 30; // Ultra high priority
+        } else if (createdAt > twoHoursAgo) {
+            score += 10;
         }
 
         // 2. Data Completeness (+20 pts)
@@ -84,11 +90,21 @@ export class LeadService {
             score += 20;
         }
 
-        // 3. Freshness (+10 pts)
-        // If created in the last 2 hours (for new leads being scored)
-        const createdAt = lead.createdAt ? new Date(lead.createdAt).getTime() : Date.now();
-        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-        if (createdAt > twoHoursAgo) {
+        // 3. Financing Eligibility (+20 pts)
+        // Values from domain: SALARIE, CDI, CDD, INDEPENDANT, CHOMAGE
+        const eligibleStatus = ['salarie', 'cdi', 'cdd', 'independant', 'chomage'];
+        if (lead.jobStatus && eligibleStatus.includes(lead.jobStatus.toLowerCase())) {
+            score += 20;
+        }
+
+        // 4. Source Weight (Balanced +10/20 pts)
+        const premiumSources = ['facebook_ads', 'google_ads', 'landing_page', 'recommandation', 'meta'];
+        if (lead.source && premiumSources.includes(lead.source.toLowerCase())) {
+            score += 10;
+        }
+
+        // 5. Project Definition (+10 pts)
+        if (lead.examId) {
             score += 10;
         }
 
@@ -280,28 +296,36 @@ export class LeadService {
         const insights: { label: string, icon: string, type: 'positive' | 'neutral' | 'negative' }[] = [];
 
         // 1. Freshness
-        const hoursAgo = (new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60);
-        if (hoursAgo < 24) {
-            insights.push({ label: 'Lead très récent (< 24h)', icon: '🔥', type: 'positive' });
+        const minutesAgo = (new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60);
+        if (minutesAgo < 15) {
+            insights.push({ label: 'Lead Ultra-Frais (< 15 min)', icon: '⚡', type: 'positive' });
+        } else if (minutesAgo < 120) {
+            insights.push({ label: 'Lead récent (< 2h)', icon: '🔥', type: 'positive' });
         }
 
-        // 2. Score mapping
+        // 2. Eligibility
+        const eligibleStatus = ['salarie', 'cdi', 'cdd', 'independant', 'chomage'];
+        if (lead.jobStatus && eligibleStatus.includes(lead.jobStatus.toLowerCase())) {
+            insights.push({ label: 'Potentiel Financement Élevé', icon: '💰', type: 'positive' });
+        }
+
+        // 3. Score mapping
         if (lead.score >= 80) {
-            insights.push({ label: 'Intention d\'achat élevée', icon: '🎯', type: 'positive' });
+            insights.push({ label: 'Priorité Haute', icon: '🎯', type: 'positive' });
         } else if (lead.score >= 50) {
-            insights.push({ label: 'Intérêt modéré à confirmer', icon: '⚖️', type: 'neutral' });
+            insights.push({ label: 'Bon potentiel', icon: '👍', type: 'neutral' });
         }
 
-        // 3. Activity
+        // 4. Project
+        if (lead.examId) {
+            insights.push({ label: 'Projet de certification défini', icon: '🎓', type: 'positive' });
+        }
+
+        // 5. Activity
         if (lead.callAttempts === 0) {
-            insights.push({ label: 'Premier contact à établir', icon: '📞', type: 'positive' });
-        } else if (lead.callAttempts > 3) {
-            insights.push({ label: 'Lead difficile à joindre', icon: '⚠️', type: 'negative' });
-        }
-
-        // 4. Source specific
-        if (lead.source?.toLowerCase().includes('recommend')) {
-            insights.push({ label: 'Source Recommandation (Haute Confiance)', icon: '🤝', type: 'positive' });
+            insights.push({ label: 'Premier contact à établir', icon: '📞', type: 'neutral' });
+        } else if (lead.callAttempts > 4) {
+            insights.push({ label: 'Difficile à joindre', icon: '⚠️', type: 'negative' });
         }
 
         return insights;

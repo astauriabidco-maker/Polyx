@@ -49,6 +49,8 @@ model User {
   achievements      UserAchievement[]
   challenges        ChallengeParticipant[]
 
+  // Dashboard Personalization
+  dashboardConfigs  DashboardConfig[]
 
   googleRefreshToken String? // For Calendar Sync
   
@@ -1903,4 +1905,26 @@ model ChallengeParticipant {
   
   @@unique([challengeId, userId])
   @@map("challenge_participants")
+}
+
+// ============================================
+// DASHBOARD PERSONALIZATION
+// ============================================
+
+model DashboardConfig {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name      String @default("Mon Dashboard")
+  isDefault Boolean @default(false)
+  
+  // JSON array of widget configurations
+  widgets   String // JSON stringified: [{ id, type, title, metric, icon, color, size }]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("dashboard_configs")
 }

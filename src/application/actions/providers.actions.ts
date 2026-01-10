@@ -23,7 +23,10 @@ export async function createProviderAction(name: string): Promise<{ success: boo
             siret: '',
             providerType: 'LEAD_GENERATOR',
             contact: { name: '', email: '', phone: '', role: '' },
-            contract: { startDate: new Date(), status: 'DRAFT' }
+            contract: { startDate: new Date(), status: 'DRAFT' },
+            auditLogs: [
+                { timestamp: new Date(), event: 'CREATED', description: `Partenaire INITIALISÉ: ${name}` }
+            ]
         };
 
         db.apiProviders.push(newProvider);
@@ -42,9 +45,19 @@ export async function verifyProviderComplianceAction(id: string, isVerified: boo
     if (isVerified) {
         provider.dpaSignedAt = new Date();
         provider.contract.status = 'ACTIVE';
+        provider.auditLogs.push({
+            timestamp: new Date(),
+            event: 'COMPLIANCE_VERIFIED',
+            description: 'Conformité validée manuellement par l\'administrateur.'
+        });
     } else {
         provider.dpaSignedAt = undefined;
         provider.contract.status = 'SUSPENDED';
+        provider.auditLogs.push({
+            timestamp: new Date(),
+            event: 'COMPLIANCE_REVOKED',
+            description: 'Conformité révoquée manuellement.'
+        });
     }
 
     revalidatePath('/app/settings/integrations');
@@ -58,6 +71,17 @@ export async function generateOnboardingLinkAction(id: string): Promise<string |
     const token = crypto.randomUUID();
     provider.onboardingToken = token;
 
+    // Set Expiration (72h)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 72);
+    provider.onboardingExpiresAt = expiresAt;
+
+    provider.auditLogs.push({
+        timestamp: new Date(),
+        event: 'LINK_GENERATED',
+        description: `Lien d'onboarding généré (Expire le ${expiresAt.toLocaleString()})`
+    });
+
     // In real app, we would return the full URL, here we return the relative path or token
     return `/onboarding/${token}`;
 }
@@ -66,6 +90,16 @@ export async function consummeOnboardingTokenAction(token: string, signatureData
     const provider = db.apiProviders.find(p => p.onboardingToken === token);
 
     if (!provider) {
+        return { success: false };
+    }
+
+    // Check Expiration
+    if (provider.onboardingExpiresAt && new Date() > provider.onboardingExpiresAt) {
+        provider.auditLogs.push({
+            timestamp: new Date(),
+            event: 'ONBOARDING_FAILED',
+            description: 'Tentative d\'onboarding avec un lien expiré.'
+        });
         return { success: false };
     }
 
@@ -79,8 +113,18 @@ export async function consummeOnboardingTokenAction(token: string, signatureData
     provider.contract.status = 'ACTIVE';
     provider.signatureUrl = signatureData;
 
+    provider.auditLogs.push({
+        timestamp: new Date(),
+        event: 'ONBOARDING_COMPLETED',
+        description: `Onboarding réussi par le partenaire. DPA ${dpaVersion} signé.`
+    });
+
+    // SIMULATE NOTIFICATION
+    console.log(`[NOTIFICATION ADMIN] Le partenaire ${provider.name} a finalisé son onboarding. Clé API activée.`);
+
     // Invalidate token so it can't be used again
     provider.onboardingToken = undefined;
+    provider.onboardingExpiresAt = undefined;
 
     revalidatePath('/app/settings/integrations');
     return { success: true, apiKey: provider.apiKey };
@@ -110,6 +154,11 @@ export async function revokeProviderAction(id: string): Promise<boolean> {
     const provider = db.apiProviders.find(p => p.id === id);
     if (provider) {
         provider.isActive = false;
+        provider.auditLogs.push({
+            timestamp: new Date(),
+            event: 'REVOKED',
+            description: 'Accès API révoqué par l\'administrateur.'
+        });
         revalidatePath('/app/settings/integrations');
         return true;
     }

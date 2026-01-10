@@ -80,8 +80,27 @@ export async function bulkUpdateLeadsAction(leadIds: string[], data: Partial<Lea
     }
 }
 
-export async function updateLeadAction(leadId: string, data: Partial<Lead>): Promise<{ success: boolean, lead?: Lead }> {
+export async function updateLeadAction(leadId: string, data: Partial<Lead>): Promise<{ success: boolean, lead?: Lead, error?: string }> {
     try {
+        // [GUARD] RDV Consistency Check
+        if (data.status === LeadStatus.RDV_FIXE || data.salesStage === SalesStage.RDV_FIXE) {
+            const current = await (prisma as any).lead.findUnique({
+                where: { id: leadId },
+                select: { status: true, salesStage: true }
+            });
+
+            // If strictly transitioning TO RDV_FIXE from another status, Block it.
+            // (Allow updates if already in RDV_FIXE, e.g. modifying notes)
+            const isAlreadyRdv = current?.status === LeadStatus.RDV_FIXE || current?.salesStage === SalesStage.RDV_FIXE;
+
+            if (!isAlreadyRdv) {
+                return {
+                    success: false,
+                    error: "Action bloquée : Pour passer en RDV_FIXE, vous devez utiliser le module 'Prise de RDV' afin de générer l'événement dans l'agenda."
+                };
+            }
+        }
+
         const updated: any = await (prisma as any).lead.update({
             where: { id: leadId },
             data: {
@@ -116,9 +135,9 @@ export async function updateLeadAction(leadId: string, data: Partial<Lead>): Pro
         };
 
         return { success: true, lead: mapped };
-    } catch (e) {
+    } catch (e: any) {
         console.error("Update Lead Error:", e);
-        return { success: false };
+        return { success: false, error: e.message || "Erreur de mise à jour" };
     }
 }
 
@@ -221,39 +240,22 @@ export async function createManualLeadAction(leadData: Partial<Lead>, organizati
 
 export async function refreshLeadScoreAction(leadId: string): Promise<{ success: boolean, newScore?: number }> {
     try {
-        // Fetch lead data for scoring
         const lead = await (prisma as any).lead.findUnique({
             where: { id: leadId }
         });
 
         if (!lead) return { success: false };
 
-        // Simple scoring algorithm based on lead data completeness
-        let score = 50; // Base score
+        // Use central Domain Service for consistent scoring
+        const score = LeadService.calculateScore(lead as Lead);
 
-        // Boost for complete contact info
-        if (lead.email && lead.email.length > 0) score += 10;
-        if (lead.phone && lead.phone.length > 0) score += 10;
-
-        // Boost for address info
-        if (lead.city) score += 5;
-        if (lead.zipCode) score += 5;
-
-        // Boost for engagement
-        if (lead.callAttempts > 0 && lead.callAttempts < 3) score += 10;
-        if (lead.status === 'CONTACTED' || lead.status === 'QUALIFIED') score += 15;
-
-        // Penalty for too many attempts without result
-        if (lead.callAttempts >= 5 && lead.status === 'PROSPECT') score -= 15;
-
-        // Clamp score between 0 and 100
-        score = Math.max(0, Math.min(100, score));
-
-        // Update lead with new score
         await (prisma as any).lead.update({
             where: { id: leadId },
             data: { score }
         });
+
+        revalidatePath('/app/crm');
+        revalidatePath('/app/sales');
 
         return { success: true, newScore: score };
     } catch (e) {
@@ -568,5 +570,47 @@ async function assignLeadRoundRobinHelper(organisationId: string, agencyId?: str
     } catch (e) {
         console.error("Auto-Assign Error:", e);
         return null;
+    }
+}
+
+export async function getSourcePerformanceAction(organisationId: string): Promise<{ success: boolean; data?: any[]; error?: string }> {
+    try {
+        const stats = await prisma.lead.groupBy({
+            by: ['source'],
+            where: { organisationId },
+            _count: { id: true },
+            _avg: { score: true }
+        });
+
+        const convertedStats = await prisma.lead.groupBy({
+            by: ['source'],
+            where: {
+                organisationId,
+                status: { in: ['QUALIFIED', 'RDV_FIXE', 'SIGNED', 'CLIENT'] }
+            },
+            _count: { id: true }
+        });
+
+        const data = stats.map(stat => {
+            const source = stat.source || 'Inconnu';
+            const total = stat._count.id;
+            const converted = convertedStats.find(c => c.source === stat.source)?._count.id || 0;
+            const conversionRate = total > 0 ? (converted / total) * 100 : 0;
+
+            return {
+                source,
+                leadsCount: total,
+                avgScore: Math.round(stat._avg.score || 0),
+                conversionRate: parseFloat(conversionRate.toFixed(1)),
+                trend: 'stable' as const
+            };
+        });
+
+        data.sort((a, b) => b.leadsCount - a.leadsCount);
+
+        return { success: true, data };
+    } catch (e) {
+        console.error("Source Performance Error:", e);
+        return { success: false, error: "Erreur lors du chargement des statistiques source" };
     }
 }
