@@ -6,6 +6,7 @@ import { GoogleCalendarService } from '@/application/services/google-calendar.se
 import { LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { SmsService } from '@/application/services/sms.service';
 import { EmailService } from '@/application/services/email.service';
+import { AgendaIntelligenceService } from '@/application/services/agenda-intelligence.service';
 
 export async function getAgendaEventsAction(orgId: string, agencyId?: string, userId?: string) {
     try {
@@ -211,6 +212,92 @@ export async function getAgendaStatsAction(orgId: string, agencyId?: string) {
     } catch (error) {
         console.error('[AgendaAction] Error fetching stats:', error);
         return { success: false, error: 'Failed to fetch agenda stats' };
+    }
+}
+
+export async function getManagerAgendaStatsAction(orgId: string, agencyId?: string) {
+    try {
+        const today = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+
+        const filter: any = {
+            organisationId: orgId,
+            ...(agencyId && { agencyId }),
+            start: { gte: thirtyDaysAgo }
+        };
+
+        // 1. Fetch Events
+        const events = await (prisma as any).calendarEvent.findMany({
+            where: filter,
+            include: { lead: true }
+        });
+
+        // 2. Trend Data (RDVs per day)
+        const trendMap = new Map();
+        events.forEach((e: any) => {
+            const dateStr = e.start.toISOString().split('T')[0];
+            trendMap.set(dateStr, (trendMap.get(dateStr) || 0) + 1);
+        });
+        const trendData = Array.from(trendMap.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+
+        // 3. Conversion Data
+        // A conversion is a lead that had an appointment and now has status RDV_FIXE or later stages like INSCRIT_CPF
+        const convertedCount = events.filter((e: any) =>
+            e.lead && ['RDV_FIXE', 'CHOIX_FINANCEMENT', 'INSCRIT_CPF', 'INSCRIT_PERSO', 'TRANSFORMATION_APPRENANT'].includes(e.lead.salesStage)
+        ).length;
+
+        const conversionRate = events.length > 0 ? (convertedCount / events.length) * 100 : 0;
+
+        // 4. Team Performance
+        const userMap = new Map();
+        events.forEach((e: any) => {
+            if (!userMap.has(e.userId)) {
+                userMap.set(e.userId, { userId: e.userId, total: 0, converted: 0 });
+            }
+            const data = userMap.get(e.userId);
+            data.total++;
+            if (e.lead && ['RDV_FIXE', 'CHOIX_FINANCEMENT', 'INSCRIT_CPF', 'INSCRIT_PERSO', 'TRANSFORMATION_APPRENANT'].includes(e.lead.salesStage)) {
+                data.converted++;
+            }
+        });
+
+        const users = await prisma.user.findMany({
+            where: { id: { in: Array.from(userMap.keys()) } },
+            select: { id: true, firstName: true, lastName: true }
+        });
+
+        const teamPerformance = Array.from(userMap.values()).map(perf => {
+            const user = users.find(u => u.id === perf.userId);
+            return {
+                name: user ? `${user.firstName} ${user.lastName}` : 'Inconnu',
+                total: perf.total,
+                conversion: perf.total > 0 ? Math.round((perf.converted / perf.total) * 100) : 0
+            };
+        });
+
+        // 5. Day of Week Saturation
+        const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+        const daySaturation = [0, 0, 0, 0, 0, 0, 0].map((_, i) => ({ day: days[i], count: 0 }));
+        events.forEach((e: any) => {
+            daySaturation[e.start.getDay()].count++;
+        });
+
+        return {
+            success: true,
+            data: {
+                totalEvents: events.length,
+                conversionRate: Math.round(conversionRate),
+                convertedCount,
+                trendData,
+                teamPerformance,
+                daySaturation: daySaturation.filter(d => d.day !== 'Dim' && d.day !== 'Sam') // Focus on work days
+            }
+        };
+
+    } catch (error) {
+        console.error('[AgendaAction] Error fetching manager stats:', error);
+        return { success: false, error: 'Failed' };
     }
 }
 
@@ -841,5 +928,15 @@ export async function confirmLeadAppointmentAction(data: {
     } catch (error) {
         console.error('[AgendaAction] Error confirming appointment:', error);
         return { success: false, error: 'Failed to confirm appointment workflow' };
+    }
+}
+
+export async function getAISuggestedSlotsAction(orgId: string, agencyId: string, durationMinutes: number = 45, leadId?: string) {
+    try {
+        const suggestions = await AgendaIntelligenceService.suggestOptimalSlots(orgId, agencyId, durationMinutes, leadId);
+        return { success: true, data: suggestions };
+    } catch (error) {
+        console.error('[AgendaAction] Error fetching AI suggestions:', error);
+        return { success: false, error: 'Failed to fetch AI suggestions' };
     }
 }
