@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { Lead, LeadWithOrg, LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { getAgencyWhereClause } from '@/lib/auth-utils';
 import { LeadService } from '@/application/services/lead.service';
+import { AttributionService } from '@/application/services/attribution.service';
 import { GamificationService, GamificationActivity } from '@/application/services/gamification.service';
 import { revalidatePath } from 'next/cache';
 
@@ -114,7 +115,8 @@ export async function updateLeadAction(leadId: string, data: Partial<Lead>): Pro
                 assignedUserId: data.assignedUserId,
                 agencyId: data.agencyId,
                 notes: data.notes
-            }
+            },
+            include: { touchpoints: true }
         });
 
         const mapped: Lead = {
@@ -224,7 +226,18 @@ export async function createManualLeadAction(leadData: Partial<Lead>, organizati
                 assignedUserId: processedLead.assignedUserId,
                 agencyId: processedLead.agencyId,
                 callAttempts: processedLead.callAttempts,
-                examId: processedLead.examId || undefined
+                examId: processedLead.examId || undefined,
+                touchpoints: {
+                    create: processedLead.touchpoints?.map(tp => ({
+                        type: tp.type,
+                        source: tp.source,
+                        medium: tp.medium,
+                        campaign: tp.campaign,
+                        referrer: tp.referrer,
+                        pageUrl: tp.pageUrl,
+                        createdAt: tp.createdAt
+                    })) || []
+                }
             }
         });
 
@@ -612,5 +625,18 @@ export async function getSourcePerformanceAction(organisationId: string): Promis
     } catch (e) {
         console.error("Source Performance Error:", e);
         return { success: false, error: "Erreur lors du chargement des statistiques source" };
+    }
+}
+
+export async function getLeadTouchpointsAction(leadId: string): Promise<{ success: boolean; touchpoints?: any[]; error?: string }> {
+    try {
+        const touchpoints = await (prisma as any).leadTouchpoint.findMany({
+            where: { leadId },
+            orderBy: { createdAt: 'asc' }
+        });
+        return { success: true, touchpoints };
+    } catch (e: any) {
+        console.error("Get Lead Touchpoints Error:", e);
+        return { success: false, error: e.message || "Failed to fetch touchpoints" };
     }
 }

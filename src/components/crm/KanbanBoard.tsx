@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Phone, User, MapPin } from 'lucide-react';
+import { Phone, User, MapPin, Clock } from 'lucide-react';
 import { updateLeadAction } from '@/application/actions/lead.actions';
 
 // Lead Status Pipeline Order
@@ -23,6 +23,8 @@ interface Lead {
     city?: string;
     status: string;
     source?: string;
+    nextCallbackAt?: Date | string | null;
+    score?: number;
 }
 
 interface KanbanBoardProps {
@@ -148,6 +150,12 @@ export default function KanbanBoard({ leads, onLeadClick, onLeadUpdate, selected
                                                         {lead.city && (
                                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
                                                                 <MapPin size={8} /> {lead.city}
+                                                            </span>
+                                                        )}
+                                                        {lead.nextCallbackAt && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+                                                                <Clock size={8} />
+                                                                {new Date(lead.nextCallbackAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                             </span>
                                                         )}
                                                     </div>

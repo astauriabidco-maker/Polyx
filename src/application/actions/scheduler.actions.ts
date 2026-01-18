@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { runColdSurveySchedulerAction } from "./quality.actions";
+import { processAppointmentRemindersAction } from "./agenda.actions";
 
 // List of available scheduled jobs
 const SCHEDULED_JOBS = [
@@ -33,6 +34,13 @@ const SCHEDULED_JOBS = [
         description: 'Sauvegarde les logs d\'émargement et données sensibles',
         cronExpression: '0 2 * * *', // Every day at 2:00 AM
         category: 'Sécurité'
+    },
+    {
+        id: 'appointment_reminders',
+        name: 'Rappels de Rendez-vous',
+        description: 'Envoie des rappels SMS/Email aux prospects avant leur rendez-vous',
+        cronExpression: '0 * * * *', // Every hour
+        category: 'Commerce'
     }
 ];
 
@@ -70,6 +78,9 @@ export async function runScheduledJobAction(jobId: string, organisationId: strin
             case 'backup_export':
                 await new Promise(r => setTimeout(r, 3000));
                 result = { success: true, message: 'Export généré dans /backups/' };
+                break;
+            case 'appointment_reminders':
+                result = await processAppointmentRemindersAction(organisationId);
                 break;
             default:
                 return { success: false, error: 'Job inconnu' };

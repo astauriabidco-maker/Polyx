@@ -29,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Tableau de Bord', href: '/app/dashboard', icon: ChartBar, show: true },
         { name: 'Agenda Intelligent', href: '/app/agenda', icon: Calendar, show: true },
         { name: 'Leads & Marketing', href: '/app/leads', icon: Users, show: hasPermission('canManageLeads') },
+        { name: 'Orchestration Campagnes', href: '/app/leads/orchestration', icon: Zap, show: hasPermission('canManageLeads') },
         { name: 'Audiences & Segments', href: '/app/leads/segments', icon: Target, show: hasPermission('canManageLeads') },
         { name: 'CRM & Closing', href: '/app/crm', icon: Briefcase, show: hasPermission('canManageLeads') },
     ];

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Briefcase, ChevronRight, User, LayoutGrid, List } from 'lucide-react';
+import { Briefcase, ChevronRight, User, LayoutGrid, List, Clock } from 'lucide-react';
 import { Lead, LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { getLeadsAction } from '@/application/actions/lead.actions';
 
@@ -13,13 +14,34 @@ import { useAuthStore } from '@/application/store/auth-store';
 import { hydrateLeads } from '@/application/lib/date-utils';
 import { SalesWorkflowWizard } from '@/components/crm/sales-workflow-wizard';
 import KanbanBoard from '@/components/crm/KanbanBoard';
-
+import { LeadDrawer } from '@/components/sales/lead-drawer';
 export default function CrmPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-slate-500">Chargement du CRM...</div>}>
+            <CrmContent />
+        </Suspense>
+    );
+}
+
+function CrmContent() {
     const { activeOrganization } = useAuthStore();
+    const searchParams = useSearchParams();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+    // Handle leadId from URL
+    useEffect(() => {
+        const leadId = searchParams.get('leadId');
+        if (leadId && leads.length > 0) {
+            const leadExists = leads.some(l => l.id === leadId);
+            if (leadExists) {
+                setSelectedLeadId(leadId);
+            }
+        }
+    }, [searchParams, leads]);
 
     useEffect(() => {
         if (activeOrganization?.id) {
@@ -92,7 +114,10 @@ export default function CrmPage() {
             {viewMode === 'kanban' ? (
                 <KanbanBoard
                     leads={leads as any}
-                    onLeadClick={(lead) => setSelectedLeadId(lead.id)}
+                    onLeadClick={(lead) => {
+                        setSelectedLeadId(lead.id);
+                        setIsDrawerOpen(true);
+                    }}
                     onLeadUpdate={loadLeads}
                 />
             ) : (
@@ -130,8 +155,8 @@ export default function CrmPage() {
                                         <p className="text-sm text-slate-500 mb-2">{lead.email}</p>
                                         <div className="flex justify-between items-center text-xs text-slate-400">
                                             <span>{lead.city || 'Ville inconnue'}</span>
-                                            <span className="flex items-center gap-1">
-                                                {lead.nextCallbackAt ? `RDV: ${new Date(lead.nextCallbackAt).toLocaleDateString()}` : 'Pas de date'}
+                                            <span className="flex items-center gap-1 font-medium text-indigo-600">
+                                                {lead.nextCallbackAt ? `RDV: ${new Date(lead.nextCallbackAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Pas de date'}
                                             </span>
                                         </div>
                                     </div>
@@ -152,11 +177,19 @@ export default function CrmPage() {
                                         </div>
                                         <div>
                                             <h2 className="font-bold text-lg text-slate-900">{selectedLead.firstName} {selectedLead.lastName}</h2>
-                                            <p className="text-sm text-slate-500">Dossier #{selectedLead.id.slice(0, 8)} • {selectedLead.source}</p>
+                                            <div className="flex items-center gap-3 text-sm text-slate-500">
+                                                <span>Dossier #{selectedLead.id.slice(0, 8)} • {selectedLead.source}</span>
+                                                {selectedLead.nextCallbackAt && (
+                                                    <span className="flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md font-bold text-[10px] uppercase">
+                                                        <Clock size={12} />
+                                                        RDV: {new Date(selectedLead.nextCallbackAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="outline" size="sm">
+                                        <Button variant="outline" size="sm" onClick={() => setIsDrawerOpen(true)}>
                                             <User size={16} className="mr-2" /> Voir fiche
                                         </Button>
                                     </div>
@@ -181,6 +214,15 @@ export default function CrmPage() {
 
                 </div>
             )}
+
+            {/* Lead Details Drawer */}
+            <LeadDrawer
+                lead={isDrawerOpen ? selectedLead as any : null}
+                onClose={() => setIsDrawerOpen(false)}
+                onUpdate={(updated) => {
+                    setLeads(leads.map(l => l.id === updated.id ? updated : l));
+                }}
+            />
         </div>
     );
 }

@@ -7,6 +7,7 @@ import { LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { SmsService } from '@/application/services/sms.service';
 import { EmailService } from '@/application/services/email.service';
 import { AgendaIntelligenceService } from '@/application/services/agenda-intelligence.service';
+import { LearnerService } from '@/application/services/learner.service';
 
 export async function getAgendaEventsAction(orgId: string, agencyId?: string, userId?: string) {
     try {
@@ -19,7 +20,8 @@ export async function getAgendaEventsAction(orgId: string, agencyId?: string, us
             include: {
                 user: true,
                 lead: true,
-                agency: true
+                agency: true,
+                training: true
             },
             orderBy: { start: 'asc' }
         });
@@ -33,6 +35,80 @@ export async function getAgendaEventsAction(orgId: string, agencyId?: string, us
 
 import { GeocodingService } from '@/application/services/geocoding.service';
 
+/**
+ * Detects scheduling conflicts in both local DB and connected Google Calendar.
+ */
+async function checkConflicts(userId: string, orgId: string, start: Date, end: Date, excludeEventId?: string) {
+    // 1. Local Database Check
+    const localCollision = await (prisma as any).calendarEvent.findFirst({
+        where: {
+            userId: userId,
+            status: { not: 'CANCELLED' },
+            id: excludeEventId ? { not: excludeEventId } : undefined,
+            OR: [
+                {
+                    start: { lte: start },
+                    end: { gt: start }
+                },
+                {
+                    start: { lt: end },
+                    end: { gte: end }
+                },
+                {
+                    start: { gte: start },
+                    end: { lte: end }
+                }
+            ]
+        }
+    });
+
+    if (localCollision) {
+        return {
+            hasConflict: true,
+            message: 'Collision détectée : Le collaborateur a déjà un rendez-vous interne sur ce créneau.'
+        };
+    }
+
+    // 2. Google Calendar Check (Cross-Calendar)
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { googleRefreshToken: true }
+        });
+
+        if (user?.googleRefreshToken) {
+            // Decrypt token if it was encrypted (usually yes)
+            // But getValidAccessToken in google-calendar.actions.ts handles it.
+            // However, that action uses orgId. Let's check if there's a user-level sync configured.
+
+            // For now, if the user has a token, we should check their primary calendar.
+            // We use the GoogleCalendarService directly for efficiency.
+            const { decrypt } = await import('@/lib/crypto');
+            const refreshToken = decrypt(user.googleRefreshToken);
+            const { accessToken } = await GoogleCalendarService.refreshAccessToken(refreshToken);
+
+            // Check for events in the range
+            const googleEvents = await GoogleCalendarService.getEvents(accessToken, 'primary', {
+                timeMin: start,
+                timeMax: end,
+                maxResults: 1
+            });
+
+            if (googleEvents && googleEvents.items && googleEvents.items.length > 0) {
+                return {
+                    hasConflict: true,
+                    message: `Conflit détecté dans le Google Calendar personnel du collaborateur (${googleEvents.items[0].summary}).`
+                };
+            }
+        }
+    } catch (error) {
+        console.error('[AgendaAction] Warning: Failed to check Google Calendar for conflicts:', error);
+        // We don't block if Google check fails, but we log it.
+    }
+
+    return { hasConflict: false };
+}
+
 export async function createAppointmentAction(data: {
     organisationId: string;
     agencyId?: string;
@@ -43,33 +119,20 @@ export async function createAppointmentAction(data: {
     start: Date;
     end: Date;
     type?: string;
-    shouldRevalidate?: boolean; // Added control
+    shouldRevalidate?: boolean;
+    trainingId?: string;
+    meetingLink?: string;
+    internalNotes?: string;
 }) {
     try {
         console.log(`[AgendaAction] 🆕 Creating appointment: ${data.title}`);
 
-        // Basic collision check (optional, but good for "intelligence")
-        const collision = await (prisma as any).calendarEvent.findFirst({
-            where: {
-                userId: data.userId,
-                status: { not: 'CANCELLED' },
-                OR: [
-                    {
-                        start: { lte: data.start },
-                        end: { gt: data.start }
-                    },
-                    {
-                        start: { lt: data.end },
-                        end: { gte: data.end }
-                    }
-                ]
-            }
-        });
-
-        if (collision) {
+        // 🛡️ Automated Conflict Detection
+        const conflict = await checkConflicts(data.userId, data.organisationId, data.start, data.end);
+        if (conflict.hasConflict) {
             return {
                 success: false,
-                error: 'Collision détectée : Le collaborateur a déjà un rendez-vous sur ce créneau.'
+                error: conflict.message
             };
         }
 
@@ -108,6 +171,9 @@ export async function createAppointmentAction(data: {
                 end: data.end,
                 type: data.type,
                 status: 'SCHEDULED',
+                trainingId: data.trainingId,
+                meetingLink: data.meetingLink,
+                internalNotes: data.internalNotes,
                 metadata
             }
         });
@@ -120,7 +186,7 @@ export async function createAppointmentAction(data: {
 
         if (user?.googleRefreshToken) {
             console.log(`[AgendaAction] 🔄 Triggering Google Sync for event ${event.id}`);
-            // await GoogleCalendarService.syncEvent(event.id, user.googleRefreshToken);
+            await GoogleCalendarService.syncEvent(event.id, user.googleRefreshToken);
         }
 
         if (data.shouldRevalidate !== false) {
@@ -140,6 +206,23 @@ export async function updateAppointmentStatusAction(eventId: string, status: str
             where: { id: eventId },
             data: { status }
         });
+
+        // 🆕 Google Calendar Sync Trigger
+        const event = await (prisma as any).calendarEvent.findUnique({
+            where: { id: eventId },
+            select: { userId: true }
+        });
+        if (event?.userId) {
+            const user = await (prisma as any).user.findUnique({
+                where: { id: event.userId },
+                select: { googleRefreshToken: true }
+            });
+            if (user?.googleRefreshToken) {
+                console.log(`[AgendaAction] 🔄 Triggering Google Sync for updated event ${eventId}`);
+                await GoogleCalendarService.syncEvent(eventId, user.googleRefreshToken);
+            }
+        }
+
         revalidatePath('/app/agenda');
         return { success: true, data: updated };
     } catch (error) {
@@ -322,6 +405,26 @@ export async function linkGoogleCalendarAction(userId: string, refreshToken: str
     }
 }
 
+/**
+ * Initiates Google OAuth for a specific user.
+ */
+export async function initiateUserGoogleOAuthAction(userId: string, baseUrl: string) {
+    try {
+        if (!GoogleCalendarService.isConfigured()) {
+            return { success: false, error: 'Google OAuth non configuré.' };
+        }
+
+        const redirectUri = `${baseUrl}/api/auth/google/callback`;
+        const state = `user:${userId}`;
+        const authUrl = GoogleCalendarService.getAuthUrl(state, redirectUri);
+
+        return { success: true, authUrl };
+    } catch (error: any) {
+        console.error('[AgendaAction] Error initiating User OAuth:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // ============================================
 // CRUD: UPDATE & DELETE EVENTS
 // ============================================
@@ -346,6 +449,16 @@ export async function duplicateAppointmentAction(eventId: string) {
             }
         });
 
+        // 🆕 Google Calendar Sync Trigger for the new duplicate
+        const user = await (prisma as any).user.findUnique({
+            where: { id: copy.userId },
+            select: { googleRefreshToken: true }
+        });
+        if (user?.googleRefreshToken) {
+            console.log(`[AgendaAction] 🔄 Triggering Google Sync for duplicated event ${copy.id}`);
+            await GoogleCalendarService.syncEvent(copy.id, user.googleRefreshToken);
+        }
+
         revalidatePath('/app/agenda');
         return { success: true, data: copy };
     } catch (error) {
@@ -360,13 +473,91 @@ export async function updateAppointmentAction(eventId: string, data: {
     start?: Date;
     end?: Date;
     type?: string;
+    trainingId?: string;
+    meetingLink?: string;
+    internalNotes?: string;
+    silent?: boolean;
 }) {
     try {
         console.log(`[AgendaAction] ✏️ Updating event ${eventId}`);
+
+        // 1. Fetch existing state for comparison and info
+        const existing = await (prisma as any).calendarEvent.findUnique({
+            where: { id: eventId },
+            include: { lead: true }
+        });
+
+        if (!existing) return { success: false, error: 'Événement introuvable' };
+
+        const isRescheduled = data.start && data.start.getTime() !== existing.start.getTime();
+
+        // 🛡️ Automated Conflict Detection (if rescheduling)
+        if (data.start || data.end) {
+            const finalStart = data.start || existing.start;
+            const finalEnd = data.end || existing.end;
+
+            const conflict = await checkConflicts(
+                existing.userId,
+                existing.organisationId,
+                finalStart,
+                finalEnd,
+                eventId
+            );
+
+            if (conflict.hasConflict) {
+                return { success: false, error: conflict.message };
+            }
+        }
+
+        // 2. Perform Update
+        const { silent, ...updateData } = data;
         const updated = await (prisma as any).calendarEvent.update({
             where: { id: eventId },
-            data
+            data: updateData
         });
+
+        // 3. 🆕 Automated Notifications (if rescheduled and not silent)
+        if (isRescheduled && !silent && existing.lead) {
+            const lead = existing.lead;
+            const newDateStr = data.start!.toLocaleString('fr-FR', {
+                weekday: 'long', day: 'numeric', month: 'long',
+                hour: '2-digit', minute: '2-digit'
+            });
+
+            const message = `Bonjour ${lead.firstName}, votre rendez-vous "${updated.title}" a été déplacé au ${newDateStr}. Merci de votre compréhension !`;
+
+            // SMS Notification
+            if (lead.phone || lead.mobile) {
+                await SmsService.send(existing.organisationId, lead.phone || lead.mobile || '', message);
+            }
+
+            // Email Notification
+            if (lead.email) {
+                await EmailService.send(existing.organisationId, {
+                    to: lead.email,
+                    subject: `Mise à jour RDV : ${updated.title}`,
+                    html: `<p>${message}</p>`
+                });
+            }
+            console.log(`[AgendaAction] 📢 Rescheduling notifications sent to lead ${lead.id}`);
+        }
+
+        // 🆕 Google Calendar Sync Trigger
+        const event = await (prisma as any).calendarEvent.findUnique({
+            where: { id: eventId },
+            select: { userId: true }
+        });
+        if (event?.userId) {
+            const user = await (prisma as any).user.findUnique({
+                where: { id: event.userId },
+                select: { googleRefreshToken: true }
+            });
+            if (user?.googleRefreshToken) {
+                console.log(`[AgendaAction] 🔄 Triggering Google Sync for updated event ${eventId}`);
+                await GoogleCalendarService.syncEvent(eventId, user.googleRefreshToken);
+            }
+        }
+
         revalidatePath('/app/agenda');
         return { success: true, data: updated };
     } catch (error) {
@@ -377,7 +568,28 @@ export async function updateAppointmentAction(eventId: string, data: {
 
 export async function deleteAppointmentAction(eventId: string) {
     try {
-        console.log(`[AgendaAction] 🗑️ Deleting event ${eventId}`);
+        // 🆕 Google Calendar Sync Trigger (Deletion)
+        const event = await (prisma as any).calendarEvent.findUnique({
+            where: { id: eventId },
+            select: { userId: true, googleEventId: true }
+        });
+
+        if (event?.userId && event?.googleEventId) {
+            const user = await (prisma as any).user.findUnique({
+                where: { id: event.userId },
+                select: { googleRefreshToken: true }
+            });
+            if (user?.googleRefreshToken) {
+                console.log(`[AgendaAction] 🗑️ Triggering Google Sync for DELETION of event ${eventId}`);
+                const accessToken = await GoogleCalendarService.refreshAccessToken(user.googleRefreshToken);
+                // We need to delete from Google. Currently syncEvent only handles create/update.
+                // Let's check if syncEvent handles deletion. 
+                // Looking at GoogleCalendarService, syncEvent uses upsert.
+                // We should probably call GoogleCalendarService.deleteEvent directly if we have the token.
+                await GoogleCalendarService.deleteEvent(accessToken.accessToken, 'primary', event.googleEventId);
+            }
+        }
+
         await (prisma as any).calendarEvent.delete({
             where: { id: eventId }
         });
@@ -396,7 +608,8 @@ export async function getEventByIdAction(eventId: string) {
             include: {
                 user: true,
                 lead: true,
-                agency: true
+                agency: true,
+                training: true
             }
         });
         return { success: true, data: event };
@@ -480,6 +693,98 @@ export async function scheduleReminderAction(eventId: string, channel: 'sms' | '
     } catch (error) {
         console.error('[AgendaAction] Error scheduling reminder:', error);
         return { success: false, error: 'Failed to schedule reminder' };
+    }
+}
+
+/**
+ * Worker: Process all pending reminders for an organization
+ */
+export async function processAppointmentRemindersAction(orgId: string) {
+    try {
+        console.log(`[AgendaAction] 🚀 Starting reminder processing for org: ${orgId}`);
+        const now = new Date();
+
+        // 1. Fetch events with potential reminders
+        // We fetch all SCHEDULED future events and filter in JS for robustness
+        const events = await (prisma as any).calendarEvent.findMany({
+            where: {
+                organisationId: orgId,
+                status: 'SCHEDULED',
+                start: { gte: now }
+            },
+            include: { lead: true }
+        });
+
+        let sentCount = 0;
+        let errorCount = 0;
+
+        for (const event of events) {
+            try {
+                const metadata = (event.metadata as any) || {};
+                const reminder = metadata.reminder;
+
+                if (reminder?.scheduled && !reminder.sentAt) {
+                    const hoursBefore = reminder.hoursBeforeEvent || 24;
+                    const reminderTime = new Date(event.start.getTime() - hoursBefore * 60 * 60 * 1000);
+
+                    // If it's time to send
+                    if (now >= reminderTime) {
+                        const lead = event.lead;
+                        if (!lead) continue;
+
+                        const eventDateStr = event.start.toLocaleString('fr-FR', {
+                            weekday: 'long', day: 'numeric', month: 'long',
+                            hour: '2-digit', minute: '2-digit'
+                        });
+
+                        const message = `Bonjour ${lead.firstName}, rappel pour votre RDV "${event.title}" prévu le ${eventDateStr}. À très vite !`;
+
+                        let success = false;
+                        if (reminder.channel === 'sms' && lead.phone) {
+                            const smsRes = await SmsService.send(orgId, lead.phone, message);
+                            success = smsRes.success;
+                        } else if (reminder.channel === 'email' && lead.email) {
+                            const emailRes = await EmailService.send(orgId, {
+                                to: lead.email,
+                                subject: `Rappel de rendez-vous : ${event.title}`,
+                                html: `<p>${message}</p>`
+                            });
+                            success = emailRes.success;
+                        }
+
+                        if (success) {
+                            // Update internal state
+                            await (prisma as any).calendarEvent.update({
+                                where: { id: event.id },
+                                data: {
+                                    metadata: {
+                                        ...metadata,
+                                        reminder: { ...reminder, scheduled: false, sentAt: new Date().toISOString() }
+                                    }
+                                }
+                            });
+                            sentCount++;
+                        } else {
+                            errorCount++;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`[AgendaAction] Error processing event ${event.id}:`, err);
+                errorCount++;
+            }
+        }
+
+        console.log(`[AgendaAction] ✅ Processed reminders: ${sentCount} sent, ${errorCount} errors`);
+        return {
+            success: true,
+            sentCount,
+            errorCount,
+            message: `${sentCount} rappels envoyés avec succès.`
+        };
+    } catch (error) {
+        console.error('[AgendaAction] Global reminder worker error:', error);
+        return { success: false, error: 'Erreur lors du traitement des rappels' };
     }
 }
 
@@ -633,7 +938,7 @@ export async function createPublicBookingAction(data: {
                     companyName: data.lead.company,
                     status: 'NEW', // Default status
                     source: 'PUBLIC_BOOKING'
-                    // might need organisationId if leads are org-scoped? 
+                    // might need organisationId if leads are org-scoped?
                     // Usually leads belong to an org. We need to find the host's org.
                 }
             });
@@ -678,8 +983,14 @@ export async function createPublicBookingAction(data: {
         });
 
         // 4. Trigger Sync & Emails (Mock)
-        if (host?.googleRefreshToken) {
-            // await GoogleCalendarService.syncEvent(event.id, host.googleRefreshToken);
+        const hostUser = await (prisma as any).user.findUnique({
+            where: { id: data.hostUserId },
+            select: { googleRefreshToken: true }
+        });
+        // 4. Sync to Host's Google Calendar if connected
+        if (hostUser?.googleRefreshToken) {
+            console.log(`[AgendaAction] 🔄 Triggering Public Booking Google Sync for HOST ${data.hostUserId}`);
+            await GoogleCalendarService.syncEvent(event.id, hostUser.googleRefreshToken);
         }
 
         return { success: true, data: event };
@@ -756,6 +1067,16 @@ export async function completeAppointmentAction(eventId: string, data: {
             });
         }
 
+        // 🆕 Google Calendar Sync Trigger
+        const host = await (prisma as any).user.findUnique({
+            where: { id: event.userId },
+            select: { googleRefreshToken: true }
+        });
+        if (host?.googleRefreshToken) {
+            console.log(`[AgendaAction] 🔄 Triggering Google Sync for completed event ${eventId}`);
+            await GoogleCalendarService.syncEvent(eventId, host.googleRefreshToken);
+        }
+
         revalidatePath('/app/agenda');
         return { success: true };
     } catch (error) {
@@ -820,6 +1141,7 @@ export async function confirmLeadAppointmentAction(data: {
             data: {
                 status: LeadStatus.RDV_FIXE,
                 salesStage: SalesStage.RDV_FIXE,
+                nextCallbackAt: data.start,
                 closingData: {}
             }
         });
@@ -832,42 +1154,10 @@ export async function confirmLeadAppointmentAction(data: {
                 type: 'STATUS_CHANGE',
                 content: 'Lead confirmé -> RDV Fixé'
             }
-        });// 3. [NEW] CRM Bridge: Create Learner (Dossier Client)
-        // Check if learner already exists for this lead
-        const existingLearner = await (prisma as any).learner.findUnique({
-            where: { leadId: data.leadId }
         });
 
-        if (!existingLearner) {
-            console.log(`[AgendaAction] 🚀 Bridging Lead ${data.leadId} to Learner Folder`);
-            await (prisma as any).learner.create({
-                data: {
-                    organisationId: data.organisationId,
-                    leadId: data.leadId,
-                    // Copy Lead Info
-                    firstName: lead.firstName,
-                    lastName: lead.lastName,
-                    email: lead.email || '',
-                    phone: lead.phone,
-                    // Address
-                    address: lead.street,
-                    postalCode: lead.zipCode,
-                    city: lead.city,
-                    // Link Agency
-                    agencyId: data.agencyId || lead.agencyId,
-                    // Initialize Status
-                    folders: {
-                        create: {
-                            status: 'ONBOARDING',
-                            fundingType: 'PERSO', // Default, to be qualified
-                            complianceStatus: 'PENDING'
-                        }
-                    }
-                }
-            });
-        } else {
-            console.log(`[AgendaAction] ℹ️ Learner already exists for Lead ${data.leadId}`);
-        }
+        // 3. [NEW] CRM Bridge: Create Learner (Dossier Client)
+        await LearnerService.bridgeLeadToLearner(data.leadId, data.organisationId, data.agencyId);
 
         // 4. Send Notifications
         const leadName = `${lead.firstName} ${lead.lastName}`;
@@ -917,7 +1207,7 @@ export async function confirmLeadAppointmentAction(data: {
         if (shouldRevalidate) {
             console.log(`[AgendaAction] 🔄 Revalidating paths...`);
             revalidatePath(`/app/crm`);
-            revalidatePath(`/app/sales`);
+            revalidatePath(`/app/leads`);
             revalidatePath(`/app/leads/${data.leadId}`);
         } else {
             console.log(`[AgendaAction] 🛑 Skipping revalidation as requested.`);
@@ -938,5 +1228,64 @@ export async function getAISuggestedSlotsAction(orgId: string, agencyId: string,
     } catch (error) {
         console.error('[AgendaAction] Error fetching AI suggestions:', error);
         return { success: false, error: 'Failed to fetch AI suggestions' };
+    }
+}
+
+/**
+ * Fetch appointments that have ended but are still in 'SCHEDULED' status.
+ */
+export async function getPendingDebriefingsAction(orgId: string, agencyId?: string) {
+    try {
+        const now = new Date();
+
+        const filter: any = {
+            organisationId: orgId,
+            status: 'SCHEDULED',
+            end: { lt: now }, // Appointment has ended
+            leadId: { not: null }, // Only for leads
+            ...(agencyId && { agencyId })
+        };
+
+        const events = await (prisma as any).calendarEvent.findMany({
+            where: filter,
+            include: {
+                lead: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        mobile: true,
+                        email: true,
+                        source: true
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true
+                    }
+                }
+            },
+            orderBy: { end: 'desc' }
+        });
+
+        return {
+            success: true,
+            data: events.map((e: any) => ({
+                id: e.id,
+                title: e.title,
+                start: e.start,
+                end: e.end,
+                lead: e.lead,
+                user: e.user,
+                delayInMinutes: Math.floor((now.getTime() - e.end.getTime()) / (1000 * 60))
+            }))
+        };
+
+    } catch (error) {
+        console.error('[AgendaAction] Error fetching pending debriefings:', error);
+        return { success: false, error: 'Failed to fetch pending debriefings' };
     }
 }

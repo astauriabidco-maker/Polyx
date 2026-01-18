@@ -22,4 +22,26 @@ export const LEAD_FIELDS: FieldDefinition[] = [
     { id: 'city', label: 'Ville', type: 'text' },
     { id: 'zipCode', label: 'Code Postal', type: 'text' },
     { id: 'callAttempts', label: 'Tentatives d\'appel', type: 'number' },
+    {
+        id: 'jobStatus',
+        label: 'Statut Professionnel',
+        type: 'enum',
+        options: [
+            { label: 'Salarié CDI', value: 'CDI' },
+            { label: 'Salarié CDD', value: 'CDD' },
+            { label: 'Indépendant', value: 'FREELANCE' },
+            { label: 'Demandeur d\'emploi', value: 'CHOMAGE' },
+            { label: 'Autre', value: 'AUTRE' }
+        ]
+    },
+    {
+        id: 'hasTraining',
+        label: 'Déjà en formation ?',
+        type: 'enum',
+        options: [
+            { label: 'Oui', value: 'true' },
+            { label: 'Non', value: 'false' }
+        ]
+    },
+    { id: 'lastTrainingDate', label: 'Date fin dernière formation', type: 'date' },
 ];

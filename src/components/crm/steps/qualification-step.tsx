@@ -126,9 +126,21 @@ export function QualificationStep({ lead, onUpdate }: QualificationStepProps) {
                 <Clock className="w-8 h-8" />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">Statut du Rendez-vous</h3>
-            <p className="text-slate-500 mb-8 font-medium">
-                {isScheduled ? `Prévu le ${new Date(lead.nextCallbackAt!).toLocaleString('fr-FR')}` : "Confirmez la présence du prospect."}
-            </p>
+
+            {isScheduled ? (
+                <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl inline-block transition-all hover:shadow-md">
+                    <p className="text-indigo-700 font-bold text-lg">
+                        Prévu le {new Date(lead.nextCallbackAt!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </p>
+                    <p className="text-indigo-500 font-medium">
+                        à {new Date(lead.nextCallbackAt!).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                </div>
+            ) : (
+                <p className="text-slate-500 mb-8 font-medium">
+                    Confirmez la présence du prospect.
+                </p>
+            )}
             <div className="flex gap-4 justify-center">
                 <Button
                     variant="outline"

@@ -10,7 +10,9 @@ export type FilterOperator =
     | 'between'
     | 'in'
     | 'is_empty'
-    | 'is_not_empty';
+    | 'is_not_empty'
+    | 'older_than'
+    | 'newer_than';
 
 export type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'enum';
 

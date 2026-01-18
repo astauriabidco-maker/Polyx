@@ -148,9 +148,15 @@ export default function AgendaManagerDashboard({ orgId, agencyId }: { orgId: str
                     </CardContent>
                 </Card>
             </div>
+
+            {/* PENDING DEBRIEFINGS - CRITICAL FOR MANAGERS */}
+            <PendingDebriefingsList orgId={orgId} agencyId={agencyId} />
+
         </div>
     );
 }
+
+import PendingDebriefingsList from './PendingDebriefingsList';
 
 function KPICard({ title, value, icon, color, trend }: { title: string, value: string | number, icon: React.ReactNode, color: string, trend?: string }) {
     return (

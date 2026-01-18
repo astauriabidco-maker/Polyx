@@ -32,10 +32,12 @@ import {
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import dynamic from 'next/dynamic';
-import { getAgendaEventsAction, getAgencyCollaboratorsAction, createAppointmentAction, linkGoogleCalendarAction, getOrganizationCollaboratorsAction, scheduleReminderAction, updateAppointmentAction, getAISuggestedSlotsAction } from '@/application/actions/agenda.actions';
+import { getAgendaEventsAction, getAgencyCollaboratorsAction, createAppointmentAction, linkGoogleCalendarAction, getOrganizationCollaboratorsAction, scheduleReminderAction, updateAppointmentAction, getAISuggestedSlotsAction, initiateUserGoogleOAuthAction, getCollaboratorAvailabilityAction } from '@/application/actions/agenda.actions';
 import { getAgenciesAction } from '@/application/actions/agency.actions';
+import { getTrainingsAction } from '@/application/actions/training.actions';
 import { useAuthStore } from '@/application/store/auth-store';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { useToast } from '@/components/ui/use-toast';
 
 const AgendaMap = dynamic(() => import('@/components/agenda/AgendaMap'), { ssr: false });
 const EventDetailModal = dynamic(() => import('@/components/agenda/EventDetailModal').then(mod => mod.EventDetailModal), { ssr: false });
@@ -72,13 +74,19 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
     const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
     const [isAiLoading, setIsAiLoading] = useState(false);
 
-    // NEW: Event Detail Modal & Reminder
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
     const [sendReminder, setSendReminder] = useState(false);
     const [reminderHours, setReminderHours] = useState(24);
     const [showAvailability, setShowAvailability] = useState(false);
 
+    // Form Enhancements
+    const [availableTrainings, setAvailableTrainings] = useState<any[]>([]);
+    const [selectedTrainingId, setSelectedTrainingId] = useState<string>('');
+    const [bookingMeetingLink, setBookingMeetingLink] = useState<string>('');
+    const [bookingInternalNotes, setBookingInternalNotes] = useState<string>('');
+
     const { user } = useAuthStore();
+    const { toast } = useToast();
 
     useEffect(() => {
         async function load() {
@@ -97,6 +105,13 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
 
             if (eventsRes.success) setEvents(eventsRes.data || []);
             if (colabsRes.success) setCollaborators(colabsRes.data || []);
+
+            // Fetch trainings
+            const trainingsRes = await getTrainingsAction(orgId);
+            if (trainingsRes.success) setAvailableTrainings(trainingsRes.trainings || []);
+
+            setIsLoading(true); // Logic says set to true but usually it's false after load?
+            // Actually line 87 sets it to true, so line 105 should set to false.
             setIsLoading(false);
         }
         load();
@@ -156,12 +171,15 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
 
         const res = await createAppointmentAction({
             organisationId: orgId,
-            agencyId: agencyId || '', // Fallback needed?
+            agencyId: agencyId || '',
             userId: selectedUserId,
             title: bookingTitle,
             type: bookingType,
             start,
-            end
+            end,
+            trainingId: selectedTrainingId !== 'NONE' ? selectedTrainingId : undefined,
+            meetingLink: bookingMeetingLink || undefined,
+            internalNotes: bookingInternalNotes || undefined
         });
 
         if (res.success) {
@@ -172,6 +190,9 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
             setEvents([...events, res.data]);
             setIsBookingOpen(false);
             setBookingTitle('');
+            setSelectedTrainingId('');
+            setBookingMeetingLink('');
+            setBookingInternalNotes('');
             setSendReminder(false);
         } else {
             alert(res.error);
@@ -320,11 +341,24 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                         <Button
                             variant="outline"
                             className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
-                            onClick={() => {
+                            onClick={async () => {
                                 if (typeof window !== 'undefined' && user) {
+                                    // Proactive check: check if user has availability defined
+                                    const availRes = await getCollaboratorAvailabilityAction(user.id);
+                                    if (availRes.success && (!availRes.data || availRes.data.length === 0)) {
+                                        toast({
+                                            title: "Attention",
+                                            description: "Vous n'avez pas encore configuré vos disponibilités. Les clients ne pourront pas réserver de créneau via ce lien.",
+                                            variant: "destructive"
+                                        });
+                                    }
+
                                     const url = `${window.location.origin}/book/${user.id}`;
                                     navigator.clipboard.writeText(url);
-                                    alert("Lien de réservation copié : " + url);
+                                    toast({
+                                        title: "Lien copié !",
+                                        description: "Le lien de réservation a été copié dans votre presse-papier.",
+                                    });
                                 }
                             }}
                         >
@@ -335,12 +369,17 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                             variant="outline"
                             className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-indigo-50 hover:text-indigo-600 group"
                             onClick={async () => {
-                                const token = prompt("Simuler la connexion Google : Entrez un refresh_token fictif (ex: mock_google_token)");
-                                if (token && orgId) {
-                                    const { user } = useAuthStore.getState();
-                                    if (user) {
-                                        await linkGoogleCalendarAction(user.id, token);
-                                        alert("Google Calendar lié avec succès ! Tes futurs rendez-vous seront synchronisés.");
+                                if (user) {
+                                    const baseUrl = window.location.origin;
+                                    const res = await initiateUserGoogleOAuthAction(user.id, baseUrl);
+                                    if (res.success && res.authUrl) {
+                                        window.location.href = res.authUrl;
+                                    } else {
+                                        toast({
+                                            title: "Erreur",
+                                            description: res.error || "Impossible d'initier la connexion Google.",
+                                            variant: "destructive"
+                                        });
                                     }
                                 }
                             }}
@@ -410,49 +449,53 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                                 {weekDays.map((day) => (
                                     <Droppable key={day.toISOString()} droppableId={day.toISOString()}>
                                         {(provided, snapshot) => (
-                                            <Card
+                                            <div
                                                 ref={provided.innerRef}
                                                 {...provided.droppableProps}
-                                                className={`border-slate-100 shadow-sm rounded-2xl overflow-hidden ${isSameDay(day, new Date()) ? 'ring-2 ring-indigo-500' : ''} ${snapshot.isDraggingOver ? 'bg-indigo-50/50' : ''}`}
+                                                className="h-full"
                                             >
-                                                <CardHeader className="p-3 bg-slate-50/80 border-b border-slate-100 text-center">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{format(day, 'EEE', { locale: fr })}</p>
-                                                    <p className={`text-lg font-black ${isSameDay(day, new Date()) ? 'text-indigo-600' : 'text-slate-800'}`}>{format(day, 'd')}</p>
-                                                </CardHeader>
-                                                <CardContent className="p-2 space-y-2 min-h-[450px]">
-                                                    {getEventsForDay(day).map((event, index) => (
-                                                        <Draggable key={event.id} draggableId={event.id} index={index}>
-                                                            {(provided, snapshot) => (
-                                                                <div
-                                                                    ref={provided.innerRef}
-                                                                    {...provided.draggableProps}
-                                                                    {...provided.dragHandleProps}
-                                                                    onClick={(e) => handleEventClick(event, e)}
-                                                                    className={`p-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs group cursor-pointer hover:bg-white transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-indigo-600 rotate-2 opacity-80' : ''}`}
-                                                                >
-                                                                    <div className="flex justify-between items-center mb-1">
-                                                                        <Badge className="text-[8px] bg-indigo-100 text-indigo-600 border-0 font-bold">{event.type}</Badge>
-                                                                        <span className="text-[10px] font-bold text-slate-400">{format(new Date(event.start), 'HH:mm')}</span>
-                                                                    </div>
-                                                                    <p className="font-bold text-slate-800 truncate mb-1">{event.title}</p>
-                                                                    {event.user && (
-                                                                        <div className="flex items-center gap-1">
-                                                                            <div className="w-4 h-4 rounded-full bg-slate-200 text-[8px] flex items-center justify-center font-bold text-slate-600">
-                                                                                {event.user.firstName.charAt(0)}{event.user.lastName.charAt(0)}
-                                                                            </div>
-                                                                            <span className="text-[9px] text-slate-500 font-medium truncate">{event.user.firstName}</span>
+                                                <Card
+                                                    className={`border-slate-100 shadow-sm rounded-2xl overflow-hidden h-full ${isSameDay(day, new Date()) ? 'ring-2 ring-indigo-500' : ''} ${snapshot.isDraggingOver ? 'bg-indigo-50/50' : ''}`}
+                                                >
+                                                    <CardHeader className="p-3 bg-slate-50/80 border-b border-slate-100 text-center">
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase">{format(day, 'EEE', { locale: fr })}</p>
+                                                        <p className={`text-lg font-black ${isSameDay(day, new Date()) ? 'text-indigo-600' : 'text-slate-800'}`}>{format(day, 'd')}</p>
+                                                    </CardHeader>
+                                                    <CardContent className="p-2 space-y-2 min-h-[450px]">
+                                                        {getEventsForDay(day).map((event, index) => (
+                                                            <Draggable key={event.id} draggableId={event.id} index={index}>
+                                                                {(provided, snapshot) => (
+                                                                    <div
+                                                                        ref={provided.innerRef}
+                                                                        {...provided.draggableProps}
+                                                                        {...provided.dragHandleProps}
+                                                                        onClick={(e) => handleEventClick(event, e)}
+                                                                        className={`p-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs group cursor-pointer hover:bg-white transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-indigo-600 rotate-2 opacity-80' : ''}`}
+                                                                    >
+                                                                        <div className="flex justify-between items-center mb-1">
+                                                                            <Badge className="text-[8px] bg-indigo-100 text-indigo-600 border-0 font-bold">{event.type}</Badge>
+                                                                            <span className="text-[10px] font-bold text-slate-400">{format(new Date(event.start), 'HH:mm')}</span>
                                                                         </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </Draggable>
-                                                    ))}
-                                                    {provided.placeholder}
-                                                    <Button variant="ghost" onClick={() => handleOpenBooking(day)} className="w-full h-8 border border-dashed border-slate-200 text-slate-300 hover:text-indigo-500 hover:border-indigo-300 rounded-xl">
-                                                        <Plus size={14} />
-                                                    </Button>
-                                                </CardContent>
-                                            </Card>
+                                                                        <p className="font-bold text-slate-800 truncate mb-1">{event.title}</p>
+                                                                        {event.user && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <div className="w-4 h-4 rounded-full bg-slate-200 text-[8px] flex items-center justify-center font-bold text-slate-600">
+                                                                                    {event.user.firstName.charAt(0)}{event.user.lastName.charAt(0)}
+                                                                                </div>
+                                                                                <span className="text-[9px] text-slate-500 font-medium truncate">{event.user.firstName}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </Draggable>
+                                                        ))}
+                                                        {provided.placeholder}
+                                                        <Button variant="ghost" onClick={() => handleOpenBooking(day)} className="w-full h-8 border border-dashed border-slate-200 text-slate-300 hover:text-indigo-500 hover:border-indigo-300 rounded-xl">
+                                                            <Plus size={14} />
+                                                        </Button>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
                                         )}
                                     </Droppable>
                                 ))}
@@ -620,17 +663,55 @@ export default function IntelligentAgenda({ orgId, agencyId }: { orgId: string, 
                             </Select>
                         </div>
 
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Type de RDV</label>
-                            <Select value={bookingType} onValueChange={setBookingType}>
-                                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="MEETING">📍 Agence (Présentiel)</SelectItem>
-                                    <SelectItem value="CALL">📞 Téléphone</SelectItem>
-                                    <SelectItem value="VISIO">💻 Visio</SelectItem>
-                                    <SelectItem value="INTERNAL">🔒 Réunion Interne</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="grid grid-cols-2 gap-4 mt-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Type de RDV</label>
+                                <Select value={bookingType} onValueChange={setBookingType}>
+                                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="MEETING">📍 Agence (Présentiel)</SelectItem>
+                                        <SelectItem value="CALL">📞 Téléphone</SelectItem>
+                                        <SelectItem value="VISIO">💻 Visio</SelectItem>
+                                        <SelectItem value="INTERNAL">🔒 Réunion Interne</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Formation</label>
+                                <Select value={selectedTrainingId} onValueChange={setSelectedTrainingId}>
+                                    <SelectTrigger className="rounded-xl border-slate-200">
+                                        <SelectValue placeholder="Choisir une formation" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="NONE">Aucune</SelectItem>
+                                        {availableTrainings.map(t => (
+                                            <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {bookingType === 'VISIO' && (
+                            <div className="space-y-1 mt-4">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Lien Visio</label>
+                                <Input
+                                    value={bookingMeetingLink}
+                                    onChange={(e) => setBookingMeetingLink(e.target.value)}
+                                    placeholder="https://meet.google.com/..."
+                                    className="rounded-xl border-slate-200"
+                                />
+                            </div>
+                        )}
+
+                        <div className="space-y-1 mt-4">
+                            <label className="text-xs font-bold text-slate-400 uppercase">Notes Internes (Privé)</label>
+                            <Input
+                                value={bookingInternalNotes}
+                                onChange={(e) => setBookingInternalNotes(e.target.value)}
+                                placeholder="Objectifs du RDV, documents à préparer..."
+                                className="rounded-xl border-slate-200"
+                            />
                         </div>
 
                         {/* Reminder Toggle */}

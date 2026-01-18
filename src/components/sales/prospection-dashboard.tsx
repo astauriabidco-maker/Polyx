@@ -14,7 +14,8 @@ import {
     Search,
     LayoutGrid,
     List as ListIcon,
-    Plus
+    Plus,
+    Target
 } from 'lucide-react';
 import { Lead, LeadStatus, LeadWithOrg } from '@/domain/entities/lead';
 import { Role } from '@/domain/entities/permission';
@@ -41,6 +42,11 @@ import { PhoningSessionModal } from '@/components/sales/phoning-session-modal';
 import { getSalesMetricsAction } from '@/application/actions/metrics.actions';
 import { getVoiceSettingsAction } from '@/application/actions/communication.actions';
 import { Play } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const SegmentsPage = dynamic(() => import('@/app/app/leads/segments/page'), {
+    loading: () => <div className="p-8 text-slate-500">Chargement du module de segmentation...</div>
+});
 
 // --- Sub-Components (Styled for Dark Mode) ---
 
@@ -204,14 +210,14 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
                 case 'mine':
                     // Default view: Active leads. In reality, filter by assignee == currentUser.id if available
                     // For now, we assume "Mine" means "Active & Not Disqualified" for the agent user context (or simplified)
-                    result = result.filter(l => ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED].includes(l.status as any));
+                    result = result.filter(l => ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED, LeadStatus.RDV_FIXE, LeadStatus.QUALIFIED].includes(l.status as any));
                     break;
                 case 'urgent':
-                    result = result.filter(l => l.score > 70 && ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED].includes(l.status as any));
+                    result = result.filter(l => l.score > 70 && ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED, LeadStatus.RDV_FIXE, LeadStatus.QUALIFIED].includes(l.status as any));
                     break;
                 case 'all':
                     // Manager view: All active leads
-                    result = result.filter(l => ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED].includes(l.status as any));
+                    result = result.filter(l => ![LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED, LeadStatus.RDV_FIXE, LeadStatus.QUALIFIED].includes(l.status as any));
                     break;
                 case 'archived':
                     result = result.filter(l => [LeadStatus.ARCHIVED, LeadStatus.DISQUALIFIED].includes(l.status as any));
@@ -240,6 +246,7 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
     const navTabs = [
         { id: 'pilotage', label: 'Pilotage', icon: Headphones },
         { id: 'supervision', label: 'Supervision', icon: LayoutDashboard, requiredRole: true },
+        { id: 'segments', label: 'Segments', icon: Target, requiredRole: true },
         { id: 'config', label: 'Config', icon: Settings, requiredRole: true },
     ].filter(t => !t.requiredRole || canViewAll);
 
@@ -432,6 +439,7 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
                         <div className="h-full overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
                             {activeTab === 'supervision' && <SupervisionView leads={leads} organisationId={activeOrganization?.id || ''} />}
                             {activeTab === 'config' && <ConfigView organisationId={activeOrganization?.id || ''} />}
+                            {activeTab === 'segments' && <div className="h-full bg-slate-950"><SegmentsPage /></div>}
                         </div>
                     )}
                 </div>

@@ -209,7 +209,7 @@ export function CustomDashboardBuilder({ userId }: { userId?: string }) {
                 </div>
                 <div className="flex gap-2">
                     <Button
-                        variant={isEditing ? "default" : "outline"}
+                        variant={isEditing ? "primary" : "outline"}
                         size="sm"
                         onClick={() => setIsEditing(!isEditing)}
                         className={isEditing ? "bg-indigo-600 hover:bg-indigo-700" : "border-slate-800 text-slate-400"}

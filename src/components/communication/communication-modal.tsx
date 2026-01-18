@@ -9,7 +9,9 @@ import {
     sendBulkEmailAction,
     getWhatsAppTemplatesAction
 } from '@/application/actions/communication.actions';
+import { generatePersonalizedMessageAction } from '@/application/actions/ai.actions';
 import { useAuthStore } from '@/application/store/auth-store';
+import { Sparkles } from 'lucide-react';
 
 interface CommunicationModalProps {
     leadIds: string[];
@@ -33,6 +35,7 @@ export function CommunicationModal({ leadIds, onClose, onSuccess, title, descrip
     const [result, setResult] = useState<{ success: number, failed: number } | null>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState('');
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
     useEffect(() => {
         if (activeOrganization) {
@@ -77,6 +80,23 @@ export function CommunicationModal({ leadIds, onClose, onSuccess, title, descrip
         const template = templates.find(t => t.id === templateId);
         if (template) {
             setMessage(template.content);
+        }
+    };
+
+    const handleAIGenerate = async () => {
+        if (!activeOrganization || leadIds.length !== 1) return;
+        setIsGeneratingAI(true);
+        try {
+            const res = await generatePersonalizedMessageAction(activeOrganization.id, leadIds[0], channel);
+            if (res.success && res.data) {
+                setMessage(res.data);
+            } else {
+                alert(res.error || "Erreur lors de la génération IA");
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsGeneratingAI(false);
         }
     };
 
@@ -177,7 +197,23 @@ export function CommunicationModal({ leadIds, onClose, onSuccess, title, descrip
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Message</label>
-                                <div className="text-[10px] text-indigo-400 font-mono">Variable: {'{{name}}'}</div>
+                                <div className="flex items-center gap-4">
+                                    {isIndividual && (
+                                        <button
+                                            onClick={handleAIGenerate}
+                                            disabled={isGeneratingAI}
+                                            className="text-[10px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-bold px-2 py-1 rounded-md flex items-center gap-1.5 transition-colors border border-indigo-500/20"
+                                        >
+                                            {isGeneratingAI ? (
+                                                <Loader2 size={10} className="animate-spin" />
+                                            ) : (
+                                                <Sparkles size={10} />
+                                            )}
+                                            Personnaliser avec l'IA
+                                        </button>
+                                    )}
+                                    <div className="text-[10px] text-indigo-400 font-mono">Variable: {'{{name}}'}</div>
+                                </div>
                             </div>
                             <textarea
                                 value={message}

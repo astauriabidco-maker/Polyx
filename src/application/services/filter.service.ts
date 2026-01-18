@@ -61,9 +61,41 @@ export class FilterService {
                 return itemValue === null || itemValue === undefined || itemValue === '';
             case 'is_not_empty':
                 return itemValue !== null && itemValue !== undefined && itemValue !== '';
+            case 'older_than': {
+                if (!itemValue) return false;
+                const threshold = this.parseRelativeTime(String(filterValue));
+                return new Date(itemValue).getTime() < threshold.getTime();
+            }
+            case 'newer_than': {
+                if (!itemValue) return false;
+                const threshold = this.parseRelativeTime(String(filterValue));
+                return new Date(itemValue).getTime() > threshold.getTime();
+            }
             default:
                 return true;
         }
+    }
+
+    /**
+     * Parses relative time strings like "6m", "30d", "1y" into a Date object (subtracted from now)
+     */
+    private static parseRelativeTime(value: string): Date {
+        const now = new Date();
+        const num = parseInt(value);
+        const unit = value.replace(String(num), '').toLowerCase().trim() || 'd';
+
+        switch (unit) {
+            case 'd': // Days
+                now.setDate(now.getDate() - num);
+                break;
+            case 'm': // Months
+                now.setMonth(now.getMonth() - num);
+                break;
+            case 'y': // Years
+                now.setFullYear(now.getFullYear() - num);
+                break;
+        }
+        return now;
     }
 
     /**

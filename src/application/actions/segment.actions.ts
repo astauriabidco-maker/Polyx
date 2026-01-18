@@ -5,6 +5,7 @@ import { FilterGroup } from '@/domain/entities/filter';
 import { FilterService } from '@/application/services/filter.service';
 import { revalidatePath } from 'next/cache';
 import { NurturingService } from '@/application/services/nurturing.service';
+import { QueryBuilderService } from '@/application/services/query-builder.service';
 
 /**
  * Fetches all segments for an organisation.
@@ -76,14 +77,16 @@ export async function executeSegmentAction(segmentId: string) {
         if (!segment) throw new Error("Segment not found");
 
         const filterGroup = segment.filterGroup as unknown as FilterGroup;
+        const whereClause = QueryBuilderService.buildWhere(filterGroup);
 
-        // Fetch all active leads for the organisation
-        const leads = await prisma.lead.findMany({
-            where: { organisationId: segment.organisationId }
+        // Fetch leads matching the segment criteria directly from DB
+        const matchingLeads = await prisma.lead.findMany({
+            where: {
+                organisationId: segment.organisationId,
+                ...whereClause
+            },
+            include: { learner: { include: { folders: true } } }
         });
-
-        // Filter leads using FilterService
-        const matchingLeads = FilterService.filterArray(leads, filterGroup);
 
         return { success: true, leads: matchingLeads };
     } catch (error: any) {

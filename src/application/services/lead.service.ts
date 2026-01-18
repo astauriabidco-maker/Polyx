@@ -1,4 +1,5 @@
 import { Lead, LeadStatus, CallOutcome, RefusalReason, LeadHistoryEntry, SalesStage } from '@/domain/entities/lead';
+import { AttributionService } from './attribution.service';
 
 /**
  * LeadService Domain Logic
@@ -131,6 +132,16 @@ export class LeadService {
             lead.salesStage = SalesStage.NOUVEAU;
         }
 
+        // Automatic Touchpoint Creation (Initial)
+        // If source is present, create an initial touchpoint
+        if (lead.source && (!lead.touchpoints || lead.touchpoints.length === 0)) {
+            lead.touchpoints = [{
+                type: 'LEAD_GENERATION',
+                source: lead.source,
+                createdAt: new Date()
+            }];
+        }
+
         return lead;
     }
 
@@ -164,6 +175,7 @@ export class LeadService {
                 // Move directly to RDV_FIXE -> CRM
                 newStatus = LeadStatus.RDV_FIXE;
                 updatedLead.salesStage = SalesStage.RDV_FIXE; // Explicitly set Stage
+                if (data?.nextCallback) updatedLead.nextCallbackAt = data.nextCallback;
                 break;
 
             case CallOutcome.CALLBACK_SCHEDULED:

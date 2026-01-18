@@ -161,8 +161,8 @@ function GoogleCalendarCard({ orgId }: { orgId?: string }) {
         if (!orgId) return;
         setIsSyncing(true);
         const res = await getGoogleEventsAction(orgId, { maxResults: 10, daysAhead: 14 });
-        if (res.success) {
-            setEvents(res.events || []);
+        if (res.success && res.events) {
+            setEvents(res.events.items || []);
             await loadStatus();
         } else {
             alert(res.error);
@@ -1739,7 +1739,16 @@ function VoiceIntegrationCard({ orgId }: { orgId?: string }) {
             setProvider(res.data.voiceProvider || 'TWILIO');
             setEnabled(res.data.voiceEnabled || false);
             setRecordingEnabled(res.data.recordingEnabled || false);
-            setConfig(res.data.voiceConfig || {});
+
+            // Merge top-level Twilio fields for UI
+            const mergedConfig = {
+                ...(res.data.voiceConfig || {}),
+                accountSid: res.data.twilioAccountSid || (res.data.voiceConfig as any)?.accountSid,
+                apiKey: res.data.twilioApiKey || (res.data.voiceConfig as any)?.apiKey,
+                apiSecret: res.data.twilioApiSecret || (res.data.voiceConfig as any)?.apiSecret,
+                twimlAppSid: res.data.twilioTwimlAppSid || (res.data.voiceConfig as any)?.twimlAppSid
+            };
+            setConfig(mergedConfig);
         }
         setIsLoading(false);
     }
@@ -1832,14 +1841,46 @@ function VoiceIntegrationCard({ orgId }: { orgId?: string }) {
                                 />
                             </div>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-xs">Numéro Voice</Label>
-                            <Input
-                                value={config.fromNumber || ''}
-                                onChange={e => setConfigField('fromNumber', e.target.value)}
-                                placeholder="+33..."
-                                className="h-8 text-xs"
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-xs">API Key SID</Label>
+                                <Input
+                                    value={config.apiKey || ''}
+                                    onChange={e => setConfigField('apiKey', e.target.value)}
+                                    placeholder="SK..."
+                                    className="h-8 text-xs font-mono"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">API Secret</Label>
+                                <Input
+                                    type="password"
+                                    value={config.apiSecret || ''}
+                                    onChange={e => setConfigField('apiSecret', e.target.value)}
+                                    placeholder="••••••••"
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-xs">TwiML App SID</Label>
+                                <Input
+                                    value={config.twimlAppSid || ''}
+                                    onChange={e => setConfigField('twimlAppSid', e.target.value)}
+                                    placeholder="AP..."
+                                    className="h-8 text-xs font-mono"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Numéro Voice (Caller ID)</Label>
+                                <Input
+                                    value={config.fromNumber || ''}
+                                    onChange={e => setConfigField('fromNumber', e.target.value)}
+                                    placeholder="+33..."
+                                    className="h-8 text-xs"
+                                />
+                            </div>
                         </div>
                     </div>
                 )}

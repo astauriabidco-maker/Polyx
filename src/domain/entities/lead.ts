@@ -196,6 +196,7 @@ export interface Lead {
     refusalReason?: RefusalReason;
 
     history: LeadHistoryEntry[];
+    touchpoints?: any[]; // LeadTouchpoint[]
 
     createdAt: Date;
     updatedAt: Date;

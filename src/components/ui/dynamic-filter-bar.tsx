@@ -50,6 +50,8 @@ const DEFAULT_OPERATORS: Record<string, { label: string; value: FilterOperator }
         { label: 'Après le', value: 'gt' },
         { label: 'Avant le', value: 'lt' },
         { label: 'Le', value: 'equals' },
+        { label: 'Plus vieux que', value: 'older_than' },
+        { label: 'Plus récent que', value: 'newer_than' },
     ],
 };
 
@@ -356,7 +358,7 @@ function GroupView({ group, fields, onChange, onDelete, isRoot }: GroupViewProps
                                         <Input
                                             type={field.type === 'number' ? 'number' : 'text'}
                                             className="h-7 bg-slate-900 border-transparent hover:border-slate-700 text-[11px] text-slate-300 focus-visible:ring-0"
-                                            placeholder="Valeur..."
+                                            placeholder={['older_than', 'newer_than'].includes(rule.operator) ? "ex: 6m, 30d, 1y" : "Valeur..."}
                                             value={rule.value}
                                             onChange={(e) => updateItem(rule.id, { ...rule, value: e.target.value })}
                                         />

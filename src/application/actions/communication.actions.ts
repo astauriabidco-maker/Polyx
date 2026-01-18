@@ -163,11 +163,18 @@ export async function getVoiceSettingsAction(orgId: string) {
             where: { organisationId: orgId }
         });
 
-        // Mask sensitive fields in voiceConfig
-        if (config?.voiceConfig) {
-            const voiceConfig = config.voiceConfig as any;
-            if (voiceConfig.deepgramApiKey) {
-                voiceConfig.deepgramApiKey = '••••••••••••••••';
+        // Mask sensitive fields
+        if (config) {
+            const anyConfig = config as any;
+            if (anyConfig.twilioApiKey) anyConfig.twilioApiKey = '••••••••';
+            if (anyConfig.twilioApiSecret) anyConfig.twilioApiSecret = '••••••••';
+            if (anyConfig.twilioTwimlAppSid) anyConfig.twilioTwimlAppSid = '••••••••';
+
+            if (anyConfig.voiceConfig) {
+                const voiceConfig = anyConfig.voiceConfig as any;
+                if (voiceConfig.deepgramApiKey) {
+                    voiceConfig.deepgramApiKey = '••••••••••••••••';
+                }
             }
         }
 
@@ -213,26 +220,48 @@ export async function saveVoiceConfigAction(orgId: string, data: {
     config: any;
 }) {
     try {
-        // [MODIFIED] Encryption for sensitive fields in config if needed
         const configToSave = { ...data.config };
+        const topLevelUpdates: any = {
+            voiceProvider: data.provider,
+            voiceEnabled: data.enabled,
+            recordingEnabled: data.recordingEnabled,
+        };
+
+        // Encryption for sensitive fields
         if (configToSave.deepgramApiKey && !configToSave.deepgramApiKey.startsWith('••••')) {
             configToSave.deepgramApiKey = encrypt(configToSave.deepgramApiKey);
         }
+
+        // Handle Twilio Voice specific fields
+        if (data.provider === 'TWILIO' && data.config) {
+            if (data.config.apiKey && !data.config.apiKey.startsWith('••••')) {
+                topLevelUpdates.twilioApiKey = encrypt(data.config.apiKey);
+                delete configToSave.apiKey;
+            }
+            if (data.config.apiSecret && !data.config.apiSecret.startsWith('••••')) {
+                topLevelUpdates.twilioApiSecret = encrypt(data.config.apiSecret);
+                delete configToSave.apiSecret;
+            }
+            if (data.config.twimlAppSid && !data.config.twimlAppSid.startsWith('••••')) {
+                topLevelUpdates.twilioTwimlAppSid = encrypt(data.config.twimlAppSid);
+                delete configToSave.twimlAppSid;
+            }
+            if (data.config.accountSid) {
+                topLevelUpdates.twilioAccountSid = data.config.accountSid;
+                delete configToSave.accountSid;
+            }
+        }
+
+        topLevelUpdates.voiceConfig = configToSave;
 
         await prisma.integrationConfig.upsert({
             where: { organisationId: orgId },
             create: {
                 organisationId: orgId,
-                voiceProvider: data.provider,
-                voiceEnabled: data.enabled,
-                recordingEnabled: data.recordingEnabled,
-                voiceConfig: configToSave
+                ...topLevelUpdates
             },
             update: {
-                voiceProvider: data.provider,
-                voiceEnabled: data.enabled,
-                recordingEnabled: data.recordingEnabled,
-                voiceConfig: configToSave
+                ...topLevelUpdates
             }
         });
 

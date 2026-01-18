@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { LeadService } from '@/application/services/lead.service';
-import { CallOutcome as DomainCallOutcome, RefusalReason } from '@/domain/entities/lead';
+import { CallOutcome as DomainCallOutcome, RefusalReason, LeadStatus } from '@/domain/entities/lead';
+import { LearnerService } from '@/application/services/learner.service';
 
 // Helper to get current user ID
 async function getCurrentUserId(): Promise<string | null> {
@@ -167,7 +168,6 @@ export async function logCallAction(
             }
         );
 
-        // 4. Persist Lead changes
         await prisma.lead.update({
             where: { id: leadId },
             data: {
@@ -179,6 +179,11 @@ export async function logCallAction(
                 updatedAt: new Date()
             }
         });
+
+        // [NEW] CRM Bridge: If status became RDV_FIXE, ensure Learner dossier exists
+        if (updatedLeadData.status === LeadStatus.RDV_FIXE) {
+            await LearnerService.bridgeLeadToLearner(leadId, lead.organisationId, lead.agencyId || undefined);
+        }
 
         // [NEW] Trigger Nurturing on NRP (No Answer)
         if (outcome === 'NO_ANSWER') {

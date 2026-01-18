@@ -10,7 +10,7 @@ import { encrypt } from '@/lib/crypto';
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
-    const state = searchParams.get('state'); // orgId
+    const state = searchParams.get('state'); // orgId or user:userId
     const error = searchParams.get('error');
 
     // Construct the redirect URI (same as used in auth request)
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    const orgId = state;
+    const isUserFlow = state.startsWith('user:');
+    const targetId = isUserFlow ? state.split(':')[1] : state;
 
     try {
         // Exchange authorization code for tokens
@@ -41,59 +42,69 @@ export async function GET(request: NextRequest) {
 
         console.log('[GoogleOAuth] Tokens received for:', tokens.email);
 
-        // Get list of calendars to select primary
-        const calendars = await GoogleCalendarService.listCalendars(tokens.accessToken);
-        const primaryCalendar = calendars.find(c => c.primary) || calendars[0];
+        if (isUserFlow) {
+            // Save to User model
+            await (prisma as any).user.update({
+                where: { id: targetId },
+                data: {
+                    googleRefreshToken: tokens.refreshToken // Refresh token is what we need for long term sync
+                }
+            });
+            console.log('[GoogleOAuth] User Calendar linked successfully');
+            return NextResponse.redirect(`${baseUrl}/app/agenda?google_connected=true`);
+        } else {
+            // Get list of calendars to select primary
+            const calendars = await GoogleCalendarService.listCalendars(tokens.accessToken);
+            const primaryCalendar = calendars.find(c => c.primary) || calendars[0];
 
-        // Save tokens to database (encrypted)
-        await (prisma as any).integrationConfig.upsert({
-            where: { organisationId: orgId },
-            create: {
-                organisationId: orgId,
-                googleCalendarEnabled: true,
-                googleAccessToken: encrypt(tokens.accessToken),
-                googleRefreshToken: encrypt(tokens.refreshToken),
-                googleTokenExpiry: tokens.expiresAt,
-                googleConnectedEmail: tokens.email,
-                googleCalendarId: primaryCalendar?.id || 'primary',
-                googleLastSyncAt: new Date(),
-                googleSyncStatus: 'success'
-            },
-            update: {
-                googleCalendarEnabled: true,
-                googleAccessToken: encrypt(tokens.accessToken),
-                googleRefreshToken: encrypt(tokens.refreshToken),
-                googleTokenExpiry: tokens.expiresAt,
-                googleConnectedEmail: tokens.email,
-                googleCalendarId: primaryCalendar?.id || 'primary',
-                googleLastSyncAt: new Date(),
-                googleSyncStatus: 'success'
-            }
-        });
-
-        console.log('[GoogleOAuth] Configuration saved successfully');
-
-        // Redirect to integrations page with success message
-        return NextResponse.redirect(
-            `${baseUrl}/app/settings/integrations?google_connected=true`
-        );
+            // Save tokens to database (encrypted) for Organisation
+            await (prisma as any).integrationConfig.upsert({
+                where: { organisationId: targetId },
+                create: {
+                    organisationId: targetId,
+                    googleCalendarEnabled: true,
+                    googleAccessToken: encrypt(tokens.accessToken),
+                    googleRefreshToken: encrypt(tokens.refreshToken),
+                    googleTokenExpiry: tokens.expiresAt,
+                    googleConnectedEmail: tokens.email,
+                    googleCalendarId: primaryCalendar?.id || 'primary',
+                    googleLastSyncAt: new Date(),
+                    googleSyncStatus: 'success'
+                },
+                update: {
+                    googleCalendarEnabled: true,
+                    googleAccessToken: encrypt(tokens.accessToken),
+                    googleRefreshToken: encrypt(tokens.refreshToken),
+                    googleTokenExpiry: tokens.expiresAt,
+                    googleConnectedEmail: tokens.email,
+                    googleCalendarId: primaryCalendar?.id || 'primary',
+                    googleLastSyncAt: new Date(),
+                    googleSyncStatus: 'success'
+                }
+            });
+            console.log('[GoogleOAuth] Organisation Configuration saved successfully');
+            return NextResponse.redirect(`${baseUrl}/app/settings/integrations?google_connected=true`);
+        }
 
     } catch (err: any) {
         console.error('[GoogleOAuth] Error:', err);
 
-        // Update status to failed
-        try {
-            await (prisma as any).integrationConfig.update({
-                where: { organisationId: orgId },
-                data: {
-                    googleSyncStatus: 'failed',
-                    googleCalendarEnabled: false
-                }
-            });
-        } catch { }
+        if (!isUserFlow) {
+            // Update status to failed for org
+            try {
+                await (prisma as any).integrationConfig.update({
+                    where: { organisationId: targetId },
+                    data: {
+                        googleSyncStatus: 'failed',
+                        googleCalendarEnabled: false
+                    }
+                });
+            } catch { }
+        }
 
+        const redirectPath = isUserFlow ? '/app/agenda' : '/app/settings/integrations';
         return NextResponse.redirect(
-            `${baseUrl}/app/settings/integrations?error=${encodeURIComponent(err.message || 'oauth_failed')}`
+            `${baseUrl}${redirectPath}?error=${encodeURIComponent(err.message || 'oauth_failed')}`
         );
     }
 }

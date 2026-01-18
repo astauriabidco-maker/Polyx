@@ -53,6 +53,10 @@ model User {
   dashboardConfigs  DashboardConfig[]
 
   googleRefreshToken String? // For Calendar Sync
+  googleResourceId   String? // For Google Webhooks Watch
+  googleChannelId    String? // Our internal channel ID
+  googleChannelExpiration DateTime?
+  googleSyncToken    String? // For incremental sync
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -138,6 +142,7 @@ model Organisation {
   // Nurturing & Automation
   nurturingSequences NurturingSequence[]
   leadSegments       LeadSegment[]
+  marketingCampaigns MarketingCampaign[]
   
   // Gamification
   challenges         Challenge[]
@@ -329,6 +334,13 @@ model CalendarEvent {
   status         String @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
   
   googleEventId  String? // Sync with Google Calendar
+  
+  trainingId     String? // Linked Training (Formation recherchée)
+  training       Training? @relation(fields: [trainingId], references: [id])
+  
+  meetingLink    String? // Dedicated visio link
+  internalNotes  String? // Private notes for collaborators
+  
   metadata       Json? // For extra smart data
 
   createdAt      DateTime @default(now())
@@ -701,6 +713,7 @@ model Training {
   
   folders   LearnerFolder[]
   sessions  TrainingSession[]
+  calendarEvents CalendarEvent[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -760,12 +773,17 @@ model Lead {
   exam         Exam?          @relation(fields: [examId], references: [id])
   agencyId     String?
   agency       Agency?        @relation(fields: [agencyId], references: [id])
+  
+  campaignId   String?
+  campaign     MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  
   activities   LeadActivity[]
   calls        Call[]
   calendarEvents CalendarEvent[]
   nurturingTasks NurturingTask[]
   nurturingEnrollments NurturingEnrollment[]
   learner      Learner? // This is the reverse relation from Learner.leadId
+  touchpoints  LeadTouchpoint[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -795,6 +813,28 @@ model LeadActivity {
 
   @@index([leadId])
   @@map("lead_activities")
+}
+
+model LeadTouchpoint {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  type      String   // AD_CLICK, PAGE_VIEW, FORM_START, CHAT_INTERACTION
+  source    String?  // utm_source (google, facebook, meta, partners)
+  medium    String?  // utm_medium (cpc, social, email)
+  campaign  String?  // utm_campaign
+  content   String?  // utm_content
+  term      String?  // utm_term
+  referrer  String?  // document.referrer
+  pageUrl   String?  // current page URL
+  
+  metadata  Json?    // Specific tracking data
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@map("lead_touchpoints")
 }
 
 model Call {
@@ -1062,6 +1102,11 @@ model IntegrationConfig {
   voiceProvider          String?  // 'TWILIO' | 'AIRCALL' | 'RINGOVER' | 'RINGCENTRAL'
   voiceConfig            Json?    // Provider-specific credentials (encrypted or plain)
 
+  // Twilio Voice Specific (AES-256 Encrypted)
+  twilioApiKey           String?  // Encrypted
+  twilioApiSecret        String?  // Encrypted
+  twilioTwimlAppSid      String?  // Encrypted
+
 
   
   // Meta Cloud API Credentials (AES-256 Encrypted)
@@ -1093,6 +1138,10 @@ model IntegrationConfig {
   googleConnectedEmail      String?  // User who connected
   googleLastSyncAt          DateTime?
   googleSyncStatus          String?  // 'success' | 'failed' | null
+  googleResourceId          String?  // For Google Webhooks Watch
+  googleChannelId           String?  // Our internal channel ID
+  googleChannelExpiration   DateTime?
+  googleSyncToken           String?  // For incremental sync
 
   // ═══════════════════════════════════════════════════════════
   // YOUSIGN INTEGRATION (Electronic Signature)
@@ -1180,6 +1229,19 @@ model IntegrationConfig {
   kairosOrganismId       String?  // Identifiant organisme
   kairosLastSyncAt       DateTime?
   kairosTestStatus       String?  // 'success' | 'failed' | null
+
+  // ═══════════════════════════════════════════════════════════
+  // DIRECT ADS CONNECTORS (Meta / Google)
+  // ═══════════════════════════════════════════════════════════
+  metaAdsEnabled         Boolean  @default(false)
+  metaAdsPageAccessToken String?  // Encrypted
+  metaAdsAppSecret       String?  // Encrypted
+  metaAdsVerifyToken     String?  // Used for webhook verification
+  
+  googleAdsEnabled       Boolean  @default(false)
+  googleAdsDeveloperToken String? // Encrypted
+  googleAdsCustomerId     String?
+  googleAdsWebhookSecret  String?  // Secret for Lead Form Webhook
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1746,6 +1808,7 @@ model NurturingSequence {
   
   steps          NurturingStep[]
   enrollments    NurturingEnrollment[]
+  marketingCampaigns MarketingCampaign[]
   
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1829,6 +1892,34 @@ model NurturingTask {
   @@index([leadId])
   @@index([status, scheduledAt])
   @@map("nurturing_tasks")
+}
+
+model MarketingCampaign {
+  id             String @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  name           String
+  description    String?
+  type           String   @default("ADS") // ADS, EMAIL, PARTNER, EVENT
+  status         String   @default("ACTIVE") // DRAFT, ACTIVE, PAUSED, COMPLETED
+  
+  budget         Float    @default(0)
+  spent          Float    @default(0)
+  
+  startDate      DateTime?
+  endDate        DateTime?
+  
+  sequenceId     String?
+  sequence       NurturingSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+
+  leads          Lead[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organisationId])
+  @@map("marketing_campaigns")
 }
 
 // ============================================

@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { X, Calendar, Clock, User, MapPin, Edit2, Trash2, Bell, Save, Loader2, CheckSquare, Phone, Mail, ExternalLink, Copy, Repeat, Link as LinkIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Calendar, Clock, User, MapPin, Edit2, Trash2, Bell, Save, Loader2, CheckSquare, Phone, Mail, ExternalLink, Copy, Repeat, Link as LinkIcon, Info, Flame, Target, BookOpen, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CallCockpit } from '@/components/sales/call-cockpit';
+import { CallOutcome } from '@/domain/entities/lead';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { updateAppointmentAction, deleteAppointmentAction, scheduleReminderAction, completeAppointmentAction, duplicateAppointmentAction } from '@/application/actions/agenda.actions';
 import { logActivityAction } from '@/application/actions/lead.actions';
+import { getTrainingsAction } from '@/application/actions/training.actions';
 import { useAuthStore } from '@/application/store/auth-store';
 import { useToast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
@@ -18,26 +21,49 @@ interface EventDetailModalProps {
         end: Date;
         type?: string;
         status?: string;
+        meetingLink?: string;
+        internalNotes?: string;
+        trainingId?: string;
         user?: { firstName: string; lastName: string };
-        lead?: { id: string; firstName: string; lastName: string; phone?: string; email?: string };
+        lead?: { id: string; firstName: string; lastName: string; phone?: string; email?: string; source?: string; score?: number };
         agency?: { name: string };
+        training?: { title: string };
     };
     onClose: () => void;
     onUpdate: () => void;
 }
 
 export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalProps) {
-    const { user: activeUser } = useAuthStore();
+    const { user: activeUser, activeOrganization } = useAuthStore();
     const { toast } = useToast();
     const router = useRouter();
     const [isEditing, setIsEditing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isCallActive, setIsCallActive] = useState(false);
 
     const [title, setTitle] = useState(event.title);
     const [description, setDescription] = useState(event.description || '');
     const [startDate, setStartDate] = useState(format(new Date(event.start), "yyyy-MM-dd'T'HH:mm"));
     const [endDate, setEndDate] = useState(format(new Date(event.end), "yyyy-MM-dd'T'HH:mm"));
+    const [meetingLink, setMeetingLink] = useState(event.meetingLink || '');
+    const [internalNotes, setInternalNotes] = useState(event.internalNotes || '');
+    const [trainingId, setTrainingId] = useState(event.trainingId || '');
+    const [trainings, setTrainings] = useState<any[]>([]);
+    const [isLoadingTrainings, setIsLoadingTrainings] = useState(false);
+
+    useEffect(() => {
+        if (isEditing && activeOrganization?.id) {
+            loadTrainings();
+        }
+    }, [isEditing]);
+
+    const loadTrainings = async () => {
+        setIsLoadingTrainings(true);
+        const res = await getTrainingsAction(activeOrganization!.id);
+        setIsLoadingTrainings(false);
+        if (res.success) setTrainings(res.trainings || []);
+    };
 
     const [reminderChannel, setReminderChannel] = useState<'sms' | 'email'>('sms');
     const [reminderHours, setReminderHours] = useState(24);
@@ -73,7 +99,10 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
             title,
             description,
             start: new Date(startDate),
-            end: new Date(endDate)
+            end: new Date(endDate),
+            meetingLink,
+            internalNotes,
+            trainingId: trainingId || undefined
         });
         setIsSaving(false);
         if (res.success) {
@@ -111,14 +140,7 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
     // --- QUICK ACTIONS ---
     const handleCall = () => {
         if (event.lead?.id && event.lead?.phone) {
-            window.location.href = `tel:${event.lead.phone}`;
-            logActivityAction({
-                leadId: event.lead.id,
-                userId: activeUser?.id || 'SYSTEM',
-                type: 'CONTACT_ATTEMPT',
-                content: 'Tentative d\'appel depuis l\'agenda',
-                metadata: { channel: 'VOICE' }
-            });
+            setIsCallActive(true);
         }
         else alert('Aucun numéro de téléphone disponible');
     };
@@ -155,7 +177,7 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
 
 
     const handleOpenCRM = () => {
-        if (event.lead?.id) window.open(`/app/leads/${event.lead.id}`, '_blank');
+        if (event.lead?.id) window.open(`/app/crm?leadId=${event.lead.id}`, '_blank');
         else alert('Aucun dossier client lié');
     };
 
@@ -203,6 +225,21 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
     return (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                {isCallActive && event.lead && (
+                    <div className="absolute inset-0 z-[110] bg-white rounded-2xl overflow-hidden animate-in slide-in-from-right duration-300">
+                        <div className="h-full">
+                            <CallCockpit
+                                lead={event.lead as any}
+                                onEndCall={(outcome) => {
+                                    setIsCallActive(false);
+                                    if (outcome === CallOutcome.APPOINTMENT_SET) onUpdate();
+                                }}
+                                recordingEnabled={true}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white">
                     <div className="flex justify-between items-start">
@@ -294,6 +331,53 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
                         </div>
                     )}
 
+                    {/* Formation recherchée */}
+                    <div className="flex items-center gap-3 text-slate-600">
+                        <BookOpen size={18} className="text-indigo-500" />
+                        {isEditing ? (
+                            <select
+                                value={trainingId}
+                                onChange={(e) => setTrainingId(e.target.value)}
+                                className="flex-1 border rounded-lg px-2 py-1 text-sm bg-white"
+                                disabled={isLoadingTrainings}
+                            >
+                                <option value="">-- Sélectionner une formation --</option>
+                                {trainings.map(t => (
+                                    <option key={t.id} value={t.id}>{t.title}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="font-medium text-slate-800">
+                                Formation : {event.training?.title || 'Non spécifiée'}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Visio Link */}
+                    <div className="flex items-center gap-3 text-slate-600">
+                        <LinkIcon size={18} className="text-indigo-500" />
+                        {isEditing ? (
+                            <input
+                                type="text"
+                                value={meetingLink}
+                                onChange={(e) => setMeetingLink(e.target.value)}
+                                placeholder="Lien visio (URL)"
+                                className="flex-1 border rounded-lg px-2 py-1 text-sm"
+                            />
+                        ) : (
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                <span className="truncate max-w-[200px] text-indigo-600 hover:underline cursor-pointer" onClick={() => meetingLink && window.open(meetingLink, '_blank')}>
+                                    {meetingLink || 'Pas de lien visio'}
+                                </span>
+                                {meetingLink && (
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => navigator.clipboard.writeText(meetingLink)}>
+                                        <Copy size={12} />
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Description */}
                     <div className="mt-4">
                         <label className="text-xs font-bold text-slate-400 uppercase">Description</label>
@@ -302,12 +386,51 @@ export function EventDetailModal({ event, onClose, onUpdate }: EventDetailModalP
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 className="w-full border rounded-lg p-2 mt-1 text-sm"
-                                rows={3}
+                                rows={2}
                             />
                         ) : (
                             <p className="text-slate-600 text-sm mt-1 whitespace-pre-line">{event.description || 'Aucune description.'}</p>
                         )}
                     </div>
+
+                    {/* Internal Notes */}
+                    <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">Notes Internes (Privé)</label>
+                        {isEditing ? (
+                            <textarea
+                                value={internalNotes}
+                                onChange={(e) => setInternalNotes(e.target.value)}
+                                className="w-full border rounded-lg p-2 mt-1 text-sm bg-white"
+                                rows={2}
+                                placeholder="Notes pour la préparation..."
+                            />
+                        ) : (
+                            <p className="text-slate-600 text-sm mt-1 italic">{internalNotes || 'Aucune note interne.'}</p>
+                        )}
+                    </div>
+
+                    {/* Lead Context Card */}
+                    {event.lead && (
+                        <div className="mt-4 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 flex flex-col gap-2">
+                            <label className="text-[10px] font-black text-indigo-400 uppercase">Contexte Prospect</label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="flex items-center gap-2">
+                                    <Target size={14} className="text-indigo-500" />
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-slate-400 uppercase leading-none">Source</span>
+                                        <span className="text-xs font-bold text-slate-700">{event.lead.source || 'Inconnue'}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Flame size={14} className={event.lead.score && event.lead.score > 70 ? "text-orange-500" : "text-indigo-400"} />
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-slate-400 uppercase leading-none">Température</span>
+                                        <span className="text-xs font-bold text-slate-700">{event.lead.score || 50}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Reminder Section */}
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mt-4">

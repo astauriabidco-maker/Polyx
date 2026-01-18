@@ -31,10 +31,11 @@ export interface CalendarEvent {
     summary: string;
     description?: string;
     location?: string;
-    start: { dateTime: string; timeZone?: string };
-    end: { dateTime: string; timeZone?: string };
+    start: { dateTime?: string; date?: string; timeZone?: string };
+    end: { dateTime?: string; date?: string; timeZone?: string };
     attendees?: { email: string; displayName?: string }[];
     colorId?: string;
+    status?: 'confirmed' | 'tentative' | 'cancelled';
 }
 
 export interface CalendarListItem {
@@ -49,7 +50,7 @@ export class GoogleCalendarService {
     /**
      * Generate the OAuth authorization URL
      */
-    static getAuthUrl(orgId: string, redirectUri: string): string {
+    static getAuthUrl(state: string, redirectUri: string): string {
         const clientId = process.env.GOOGLE_CLIENT_ID;
 
         if (!clientId) {
@@ -63,7 +64,7 @@ export class GoogleCalendarService {
             scope: SCOPES,
             access_type: 'offline',
             prompt: 'consent',
-            state: orgId // Pass orgId to identify the organization on callback
+            state: state // Pass state to identify the context on callback
         });
 
         return `${GOOGLE_AUTH_URL}?${params.toString()}`;
@@ -183,22 +184,26 @@ export class GoogleCalendarService {
     }
 
     /**
-     * Get upcoming events from a calendar
+     * Get events from a calendar (supports incremental sync via syncToken)
      */
     static async getEvents(
         accessToken: string,
         calendarId: string = 'primary',
-        options: { maxResults?: number; timeMin?: Date; timeMax?: Date } = {}
-    ): Promise<CalendarEvent[]> {
+        options: { maxResults?: number; timeMin?: Date; timeMax?: Date; syncToken?: string } = {}
+    ): Promise<{ items: CalendarEvent[]; nextSyncToken?: string }> {
         const params = new URLSearchParams({
-            maxResults: String(options.maxResults || 50),
-            singleEvents: 'true',
-            orderBy: 'startTime',
-            timeMin: (options.timeMin || new Date()).toISOString()
+            maxResults: String(options.maxResults || 250),
+            singleEvents: options.syncToken ? 'false' : 'true', // Incremental sync requires singleEvents=false
         });
 
-        if (options.timeMax) {
-            params.append('timeMax', options.timeMax.toISOString());
+        if (options.syncToken) {
+            params.append('syncToken', options.syncToken);
+        } else {
+            params.append('orderBy', 'startTime');
+            params.append('timeMin', (options.timeMin || new Date()).toISOString());
+            if (options.timeMax) {
+                params.append('timeMax', options.timeMax.toISOString());
+            }
         }
 
         const response = await fetch(
@@ -209,18 +214,82 @@ export class GoogleCalendarService {
         const data = await response.json();
 
         if (data.error) {
+            // If syncToken is invalid, we might need to do a full sync
+            if (data.error.errors?.[0]?.reason === 'fullSyncRequired') {
+                throw new Error('FULL_SYNC_REQUIRED');
+            }
             throw new Error(`Get events error: ${data.error.message}`);
         }
 
-        return data.items?.map((item: any) => ({
+        const items = data.items?.map((item: any) => ({
             id: item.id,
             summary: item.summary || '(Sans titre)',
             description: item.description,
             location: item.location,
             start: item.start,
             end: item.end,
-            attendees: item.attendees
+            attendees: item.attendees,
+            status: item.status // 'confirmed', 'tentative', 'cancelled'
         })) || [];
+
+        return { items, nextSyncToken: data.nextSyncToken };
+    }
+
+    /**
+     * Subscribe to a calendar's push notifications (Webhooks)
+     */
+    static async watchCalendar(
+        accessToken: string,
+        calendarId: string,
+        channelId: string,
+        webhookUrl: string
+    ): Promise<{ resourceId: string; expiration: string }> {
+        const response = await fetch(`${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/watch`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: channelId,
+                type: 'web_hook',
+                address: webhookUrl,
+                // token: 'optional-verification-token'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(`Watch error: ${data.error.message}`);
+        }
+
+        return {
+            resourceId: data.resourceId,
+            expiration: data.expiration
+        };
+    }
+
+    /**
+     * Stop a push notification subscription
+     */
+    static async stopWatch(accessToken: string, channelId: string, resourceId: string): Promise<void> {
+        const response = await fetch(`${GOOGLE_CALENDAR_API}/channels/stop`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: channelId,
+                resourceId: resourceId
+            })
+        });
+
+        if (!response.ok && response.status !== 204) {
+            const data = await response.json().catch(() => ({}));
+            console.warn('[GoogleCalendar] Failed to stop watch:', data.error?.message || response.statusText);
+        }
     }
 
     /**
@@ -334,12 +403,34 @@ export class GoogleCalendarService {
 
             const { accessToken } = await this.refreshAccessToken(refreshToken);
 
-            await this.createEvent(accessToken, 'primary', {
+            const eventData: CalendarEvent = {
                 summary: event.title,
-                description: event.description,
+                description: event.description || '',
                 start: { dateTime: event.start.toISOString() },
                 end: { dateTime: event.end.toISOString() }
-            });
+            };
+
+            if (event.googleEventId) {
+                // Update existing event
+                try {
+                    await this.updateEvent(accessToken, 'primary', event.googleEventId, eventData);
+                } catch (err) {
+                    console.warn('[GoogleCalendarService] Failed to update event, trying create instead:', err);
+                    // If update fails (e.g. event deleted on Google), try creating a new one
+                    const created = await this.createEvent(accessToken, 'primary', eventData);
+                    await (prisma as any).calendarEvent.update({
+                        where: { id: eventId },
+                        data: { googleEventId: created.id }
+                    });
+                }
+            } else {
+                // Create new event
+                const created = await this.createEvent(accessToken, 'primary', eventData);
+                await (prisma as any).calendarEvent.update({
+                    where: { id: eventId },
+                    data: { googleEventId: created.id }
+                });
+            }
 
             return true;
         } catch (error) {

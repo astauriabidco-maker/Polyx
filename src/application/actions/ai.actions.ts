@@ -100,3 +100,50 @@ export async function testAiConnectionAction(orgId: string) {
         return { success: false, error: error.message };
     }
 }
+/**
+ * Generate a personalized outreach message based on lead context
+ */
+export async function generatePersonalizedMessageAction(orgId: string, leadId: string, channel: string) {
+    try {
+        const lead = await prisma.lead.findUnique({
+            where: { id: leadId },
+            include: {
+                exam: true,
+                activities: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 5
+                }
+            }
+        });
+
+        if (!lead) throw new Error("Lead introuvable");
+
+        const systemPrompt = `Tu es un expert en conversion de leads pour Polyx Academy. 
+Ton objectif est de rédiger un message de relance court (max 300 caractères), percutant et ultra-personnalisé pour ${channel}.
+Le message doit être en français, professionnel mais chaleureux.
+N'utilise pas de placeholders comme [Nom], remplace-les directement par les données fournies.
+Retourne uniquement le texte du message, sans commentaire.`;
+
+        const userPrompt = `
+LEAD: ${lead.firstName} ${lead.lastName || ''}
+PROJET: ${lead.exam?.name || 'Formation professionnelle'}
+STATUT: ${lead.jobStatus || 'Inconnu'}
+DERNIERS ÉCHANGES:
+${lead.activities.map(a => `- ${a.content}`).join('\n')}
+
+Génère un message pour ${channel}.`;
+
+        const res = await AIService.prompt(orgId, systemPrompt, userPrompt);
+
+        if (res.success && res.text) {
+            // Clean up any potential markdown garbage
+            const cleanText = res.text.replace(/^["']|["']$/g, '').trim();
+            return { success: true, data: cleanText };
+        } else {
+            return { success: false, error: res.error || "Échec de génération" };
+        }
+    } catch (error: any) {
+        console.error("AI Generation Error:", error);
+        return { success: false, error: error.message };
+    }
+}

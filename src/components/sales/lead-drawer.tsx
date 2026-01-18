@@ -19,6 +19,7 @@ import { LeadScheduleModal } from './drawer/LeadScheduleModal';
 import { LeadInsights } from './drawer/LeadInsights';
 import { NurturingStatus } from './drawer/NurturingStatus';
 import { CallInsights } from './drawer/CallInsights';
+import { AttributionJourney } from './drawer/AttributionJourney';
 
 interface LeadDrawerProps {
     lead: LeadWithOrg | null;
@@ -360,6 +361,8 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                                             )}
                                         </div>
                                     </div>
+
+                                    <AttributionJourney leadId={lead.id} />
 
                                     <div className="p-4 bg-slate-50 rounded border border-slate-100 space-y-4">
                                         <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
