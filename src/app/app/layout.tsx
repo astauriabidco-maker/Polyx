@@ -5,14 +5,15 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutGrid, ChartBar, Users, BookOpen, GraduationCap,
     Fingerprint, Briefcase, Folder, ShieldCheck, Settings2,
-    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit, Calendar, Target
+    Network, DollarSign, Zap, FileText, LogOut, MapPin, ClipboardCheck, Terminal, Radar, FileSpreadsheet, BrainCircuit, Calendar, Target, Globe
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/application/store/auth-store';
 import { Button } from '@/components/ui/button';
-import { getSessionAction, logoutAction } from '@/application/actions/auth.actions';
+import { getSessionAction, logoutAction, checkIsGlobalAdminAction } from '@/application/actions/auth.actions';
 import { Toaster } from '@/components/ui/toaster';
 import { AgencySwitcher } from '@/components/layout/agency-switcher';
+import { cn } from '@/lib/utils';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -20,9 +21,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { user, activeOrganization, login, logout, hasPermission } = useAuthStore();
 
     const [mounted, setMounted] = useState(false);
+    const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
 
     useEffect(() => {
         setMounted(true);
+        checkIsGlobalAdminAction().then(setIsGlobalAdmin);
     }, []);
 
     const commercialNav = [
@@ -45,17 +48,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ];
 
     const exploitationNav = [
-        { name: 'Structure & Agences', href: '/app/network?tab=agencies', icon: MapPin, show: hasPermission('canEditUsers') },
-        { name: 'Gestion Franchises', href: '/app/network?tab=franchises', icon: Network, show: hasPermission('canEditUsers') },
+        { name: 'Gestion Franchises', href: '/app/franchises', icon: Network, show: hasPermission('canEditUsers') },
+        { name: 'Administration', href: '/app/admin', icon: ShieldCheck, show: hasPermission('canEditUsers') },
         { name: 'Redevances & Factures', href: '/app/network?tab=billing', icon: DollarSign, show: hasPermission('canEditUsers') },
-        { name: 'Facturation Client', href: '/app/billing/invoices', icon: FileText, show: true }, // New Invoice Module active
-        { name: 'Administration', href: '/app/settings/management', icon: Settings2, show: hasPermission('canEditUsers') },
-        { name: 'Planificateur (CRON)', href: '/app/settings/scheduler', icon: Terminal, show: hasPermission('canEditUsers') },
+        { name: 'Facturation Client', href: '/app/billing/invoices', icon: FileText, show: true },
         { name: 'Audit & Contrôle', href: '/app/audit', icon: ShieldCheck, show: hasPermission('canEditUsers') },
         { name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet, show: hasPermission('canEditUsers') },
         { name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit, show: hasPermission('canEditUsers') },
-        { name: 'Intégrations API', href: '/app/settings/integrations', icon: Settings2, show: hasPermission('canEditUsers') },
-        { name: 'Marketing Automation', href: '/app/settings/marketing', icon: Zap, show: hasPermission('canEditUsers') },
     ];
 
 
@@ -144,17 +143,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <p className="px-3 text-[10px] font-black text-purple-500 uppercase tracking-widest">Exploitation Réseau</p>
                     </div>
                     {exploitationNav.filter(i => i.show).map((item) => {
-                        const isActive = pathname === '/app/network'
-                            ? (new URLSearchParams(window.location.search).get('tab') === (new URL(item.href, 'http://x').searchParams.get('tab')))
-                            : pathname === item.href;
+                        const isActive = pathname.startsWith(item.href);
                         return (
                             <Link
                                 key={item.name}
                                 href={item.href}
-                                className={`
-                                  flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors
-                                  ${isActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                                `}
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                                    isActive
+                                        ? 'bg-purple-50 text-purple-700 font-bold'
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                )}
                             >
                                 <item.icon size={18} className={isActive ? 'text-purple-600' : 'text-slate-400'} />
                                 {item.name}
@@ -162,6 +161,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         )
                     })}
                 </nav>
+
+                {isGlobalAdmin && (
+                    <div className="px-4 py-2 border-t border-slate-100">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-bold"
+                            onClick={() => router.push('/super-admin')}
+                        >
+                            <Globe size={16} className="mr-2" />
+                            Nexus Admin
+                        </Button>
+                    </div>
+                )}
 
                 <div className="p-4 border-t border-slate-100">
                     <div className="flex items-center gap-3 mb-4">

@@ -16,8 +16,11 @@ export function middleware(request: NextRequest) {
     // In a real app, verify JWT or Session Cookie
     const token = request.cookies.get('auth_token');
 
-    // If trying to access app routes without token
-    if (!token && path.startsWith('/app')) {
+    // If trying to access protected routes without token
+    const protectedPaths = ['/app', '/super-admin', '/hub'];
+    const isProtectedRoute = protectedPaths.some(p => path.startsWith(p));
+
+    if (!token && isProtectedRoute) {
         const loginUrl = new URL('/login', request.url);
         loginUrl.searchParams.set('redirect', path);
         return NextResponse.redirect(loginUrl);
