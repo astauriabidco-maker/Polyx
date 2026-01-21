@@ -6,13 +6,15 @@ import { cookies } from 'next/headers';
 import { LeadService } from '@/application/services/lead.service';
 import { CallOutcome as DomainCallOutcome, RefusalReason, LeadStatus } from '@/domain/entities/lead';
 import { LearnerService } from '@/application/services/learner.service';
+import { verifyToken } from '@/lib/security';
 
 // Helper to get current user ID
 async function getCurrentUserId(): Promise<string | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
-    if (!token || !token.startsWith('mock_token_')) return null;
-    return token.replace('mock_token_', '');
+    if (!token) return null;
+    const payload = await verifyToken(token);
+    return payload?.userId || null;
 }
 
 // ============================================

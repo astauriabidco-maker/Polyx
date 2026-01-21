@@ -2,38 +2,17 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { cookies } from 'next/headers';
-
-/**
- * Security: Verifies if the current user is a Global Admin.
- */
-async function checkGlobalAdmin() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth_token')?.value;
-
-    if (!token || !token.startsWith('mock_token_')) {
-        throw new Error('Non authentifié');
-    }
-
-    const userId = token.replace('mock_token_', '');
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isGlobalAdmin: true }
-    });
-
-    if (!user?.isGlobalAdmin) {
-        throw new Error('Accès réservé aux administrateurs plateforme');
-    }
-
-    return userId;
-}
+import { requireAuth, requireGlobalAdmin, requirePermission } from '@/lib/server-guard';
 
 // ============================================
-// ORGANIZATION PROFILE (Prisma-backed)
+// ORGANIZATION PROFILE (Prisma-backed) - Protected by Server Guards
 // ============================================
 
 export async function getOrganizationAction(organisationId: string) {
     try {
+        // Guard: Require authentication
+        await requireAuth();
+
         const org = await (prisma as any).organisation.findUnique({
             where: { id: organisationId },
             include: {
@@ -102,6 +81,9 @@ export async function updateOrganizationAction(organisationId: string, data: {
     website?: string;
 }) {
     try {
+        // Guard: Require SETTINGS_EDIT permission
+        await requirePermission('SETTINGS_EDIT');
+
         const org = await (prisma as any).organisation.update({
             where: { id: organisationId },
             data: {
@@ -133,6 +115,9 @@ export async function createOrganizationAction(data: {
     zipCode?: string;
 }) {
     try {
+        // Guard: Only Global Admins can create organizations
+        await requireGlobalAdmin();
+
         // Check SIRET uniqueness if provided
         if (data.siret) {
             const existing = await (prisma as any).organisation.findUnique({
@@ -180,6 +165,9 @@ export async function createOrganizationAction(data: {
 
 export async function getOrganizationsAction() {
     try {
+        // Guard: Only Global Admins can list all organizations
+        await requireGlobalAdmin();
+
         const orgs = await (prisma as any).organisation.findMany({
             include: {
                 _count: {
@@ -212,6 +200,9 @@ export async function getOrganizationsAction() {
  */
 export async function resendAdminInvitationAction(organisationId: string) {
     try {
+        // Guard: Only Global Admins can resend invitations
+        await requireGlobalAdmin();
+
         const org = await (prisma as any).organisation.findUnique({
             where: { id: organisationId }
         });
@@ -265,7 +256,7 @@ export async function resendAdminInvitationAction(organisationId: string) {
 // ============================================
 
 export async function getOrganisationGroupsAction() {
-    await checkGlobalAdmin();
+    await requireGlobalAdmin();
     try {
         const groups = await (prisma as any).organisationGroup.findMany({
             include: {
@@ -294,7 +285,7 @@ export async function createOrganisationGroupAction(data: {
     createdById: string;
     organisationIds?: string[];
 }) {
-    await checkGlobalAdmin();
+    await requireGlobalAdmin();
     try {
         const group = await (prisma as any).organisationGroup.create({
             data: {
@@ -320,7 +311,8 @@ export async function createOrganisationGroupAction(data: {
 }
 
 export async function addOrganisationToGroupAction(groupId: string, organisationId: string, role: string = 'MEMBER') {
-    await checkGlobalAdmin();
+    // Guard: Only Global Admins can manage groups
+    await requireGlobalAdmin();
     try {
         const member = await (prisma as any).organisationGroupMember.create({
             data: { groupId, organisationId, role }
@@ -335,7 +327,8 @@ export async function addOrganisationToGroupAction(groupId: string, organisation
 }
 
 export async function removeOrganisationFromGroupAction(groupId: string, organisationId: string) {
-    await checkGlobalAdmin();
+    // Guard: Only Global Admins can manage groups
+    await requireGlobalAdmin();
     try {
         await (prisma as any).organisationGroupMember.delete({
             where: { groupId_organisationId: { groupId, organisationId } }
@@ -348,3 +341,4 @@ export async function removeOrganisationFromGroupAction(groupId: string, organis
         return { success: false, error: 'Failed to remove organisation from group' };
     }
 }
+

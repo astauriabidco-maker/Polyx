@@ -1,16 +1,16 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
 import { getUserOrgAccess } from './permissions';
+import { verifyToken } from './security';
 
-export async function getCurrentUserId() {
+export async function getCurrentUserId(): Promise<string | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
-    if (!token || !token.startsWith('mock_token_')) {
-        return null;
-    }
+    if (!token) return null;
 
-    return token.replace('mock_token_', '');
+    const payload = await verifyToken(token);
+    return payload?.userId || null;
 }
 
 /**

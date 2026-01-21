@@ -6,6 +6,7 @@ import { Role } from '@/domain/entities/permission';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import { getUserOrgAccess } from '@/lib/permissions';
+import { verifyPassword, createToken, isBcryptHash } from '@/lib/security';
 
 export interface RegisterState {
     success?: boolean;
@@ -19,40 +20,67 @@ export async function registerOrganizationAction(formData: FormData): Promise<Re
 
 export async function loginAction(input: FormData | string) {
     try {
-        let email = typeof input === 'string' ? input : input.get('email') as string;
-        email = email?.trim().toLowerCase();
+        // 1. Extract credentials
+        let email: string;
+        let password: string;
 
-        console.log('[Login] Attempting for:', email);
-        console.log('[Login] Email length:', email?.length);
-        console.log('[Login] DB URL Config:', process.env.DATABASE_URL ? 'Defined' : 'Undefined');
-
-        // 1. Find User - with detailed logging
-        let user = await prisma.user.findUnique({ where: { email } });
-
-        // Fallback: try findFirst for debugging
-        if (!user) {
-            console.log('[Login] findUnique failed, trying findFirst...');
-            const allUsers = await prisma.user.findMany({ take: 3 });
-            console.log('[Login] Available users:', allUsers.map((u: { email: string }) => u.email));
-            user = allUsers.find((u: { email: string }) => u.email.toLowerCase() === email) || null;
+        if (typeof input === 'string') {
+            email = input;
+            password = '';
+        } else {
+            email = input.get('email') as string;
+            password = input.get('password') as string || '';
         }
 
-        if (!user) return { success: false, error: `Utilisateur non trouvé: "${email}"` };
+        email = email?.trim().toLowerCase();
 
-        // 2. Set Cookie
-        const cookieStore = await cookies();
-        cookieStore.set('auth_token', 'mock_token_' + user.id, {
-            path: '/',
-            httpOnly: true,
-            sameSite: 'lax',
-            maxAge: 3600
+        if (!email) {
+            return { success: false, error: 'Email requis' };
+        }
+
+        // 2. Find User
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        if (!user) {
+            return { success: false, error: 'Email ou mot de passe incorrect' };
+        }
+
+        if (!user.isActive) {
+            return { success: false, error: 'Compte désactivé. Contactez le support.' };
+        }
+
+        // 3. Verify Password
+        // Only verify if password is hashed (bcrypt format)
+        if (user.hashedPassword && await isBcryptHash(user.hashedPassword)) {
+            const isValidPassword = await verifyPassword(password, user.hashedPassword);
+            if (!isValidPassword) {
+                return { success: false, error: 'Email ou mot de passe incorrect' };
+            }
+        }
+        // If no hashed password, allow login (for migration period - TODO: remove after migration)
+
+        // 4. Create JWT Token
+        const token = await createToken({
+            userId: user.id,
+            email: user.email,
+            isGlobalAdmin: user.isGlobalAdmin
         });
 
-        // 3. Get Context
+        // 5. Set Secure Cookie
+        const cookieStore = await cookies();
+        cookieStore.set('auth_token', token, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7 // 7 days
+        });
+
+        // 6. Get Context
         const accesses = await getUserOrgAccess(user.id);
 
         if (accesses.length === 0) {
-            console.error('[Login] No access grants.');
+            console.error('[Login] No access grants for user:', user.email);
             return { success: false, error: "Compte sans organisation. Contactez le support." };
         }
 
@@ -63,7 +91,7 @@ export async function loginAction(input: FormData | string) {
         });
 
         if (!organization) {
-            console.error('[Login] Org not found.');
+            console.error('[Login] Org not found for access:', access.organisationId);
             return { success: false, error: "Organisation introuvable." };
         }
 
@@ -74,7 +102,8 @@ export async function loginAction(input: FormData | string) {
             joinedAt: new Date()
         };
 
-        // 4. Success
+        // 7. Success
+        console.log('[Login] ✅ Success for:', user.email);
         return {
             success: true,
             user,
@@ -94,19 +123,27 @@ export async function getSessionAction() {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
-    if (!token || !token.startsWith('mock_token_')) {
+    if (!token) {
         return { success: false };
     }
 
-    const userId = token.replace('mock_token_', '');
+    // Verify JWT token
+    const { verifyToken } = await import('@/lib/security');
+    const payload = await verifyToken(token);
+
+    if (!payload) {
+        return { success: false };
+    }
+
     const user = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: payload.userId }
     });
 
     if (!user) return { success: false };
+    if (!user.isActive) return { success: false };
 
     // Fetch Permissions
-    const accesses = await getUserOrgAccess(userId);
+    const accesses = await getUserOrgAccess(payload.userId);
 
     if (accesses.length === 0) {
         return { success: true, user, organization: null, membership: null, permissions: null };
@@ -142,11 +179,20 @@ export async function checkIsGlobalAdminAction() {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
-    if (!token || !token.startsWith('mock_token_')) return false;
+    if (!token) return false;
 
-    const userId = token.replace('mock_token_', '');
+    // Verify JWT and use payload directly for quick check
+    const { verifyToken } = await import('@/lib/security');
+    const payload = await verifyToken(token);
+
+    if (!payload) return false;
+
+    // Use cached value from token for performance, or verify from DB
+    if (payload.isGlobalAdmin) return true;
+
+    // Fallback: verify from database
     const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: payload.userId },
         select: { isGlobalAdmin: true }
     });
 
@@ -221,6 +267,9 @@ export async function acceptInvitationAction(data: {
     password: string;
 }) {
     try {
+        // Import security utilities
+        const { hashPassword, createToken } = await import('@/lib/security');
+
         // 1. Validate invitation
         const invitation = await (prisma as any).invitation.findUnique({
             where: { token: data.token },
@@ -242,7 +291,15 @@ export async function acceptInvitationAction(data: {
             return { success: false, error: 'Invitation déjà utilisée' };
         }
 
-        // 2. Transaction: Create user + access grant + update invitation
+        // 2. Validate password
+        if (!data.password || data.password.length < 8) {
+            return { success: false, error: 'Le mot de passe doit contenir au moins 8 caractères' };
+        }
+
+        // 3. Hash the password
+        const hashedPassword = await hashPassword(data.password);
+
+        // 4. Transaction: Create user + access grant + update invitation
         const result = await prisma.$transaction(async (tx: any) => {
             // Check if user already exists
             let user = await tx.user.findUnique({
@@ -262,14 +319,13 @@ export async function acceptInvitationAction(data: {
                     return { success: false, error: 'Vous avez déjà accès à cette organisation.' };
                 }
             } else {
-                // Create new user
-                // Note: In production, hash the password with bcrypt
+                // Create new user with hashed password
                 user = await tx.user.create({
                     data: {
                         email: invitation.email,
                         firstName: data.firstName,
                         lastName: data.lastName,
-                        hashedPassword: data.password, // TODO: Use bcrypt in production
+                        hashedPassword: hashedPassword,
                         isActive: true
                     }
                 });
@@ -298,13 +354,21 @@ export async function acceptInvitationAction(data: {
             return result; // Error case from inside transaction
         }
 
-        // 3. Auto-login the user
+        // 5. Create JWT token for auto-login
+        const jwtToken = await createToken({
+            userId: result.user.id,
+            email: result.user.email,
+            isGlobalAdmin: result.user.isGlobalAdmin || false
+        });
+
+        // 6. Set secure cookie
         const cookieStore = await cookies();
-        cookieStore.set('auth_token', 'mock_token_' + result.user.id, {
+        cookieStore.set('auth_token', jwtToken, {
             path: '/',
             httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: 3600 * 24 * 7 // 7 days
+            maxAge: 60 * 60 * 24 * 7 // 7 days
         });
 
         console.log(`[Invitation] ✅ User ${result.user.email} joined ${invitation.organisation.name}`);

@@ -1,15 +1,21 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
+import { verifyToken } from './security';
 
 export async function checkPermissions(requiredPermission: string, orgId: string) {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
-    if (!token || !token.startsWith('mock_token_')) {
+    if (!token) {
         throw new Error('Non authentifié');
     }
 
-    const userId = token.replace('mock_token_', '');
+    const payload = await verifyToken(token);
+    if (!payload) {
+        throw new Error('Token invalide');
+    }
+
+    const userId = payload.userId;
 
     // Get the user's role in this specific organization
     const grant = await prisma.userAccessGrant.findFirst({

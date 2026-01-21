@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/security';
 
 import { EmailService } from '@/application/services/email.service';
 
@@ -94,7 +95,7 @@ export async function acceptInvitation(token: string) {
         const cookieStore = await cookies();
         const authCookie = cookieStore.get('auth_token')?.value;
 
-        if (!authCookie || !authCookie.startsWith('mock_token_')) {
+        if (!authCookie) {
             return {
                 success: false,
                 error: 'Veuillez vous connecter pour accepter cette invitation',
@@ -102,7 +103,16 @@ export async function acceptInvitation(token: string) {
             };
         }
 
-        const userId = authCookie.replace('mock_token_', '');
+        const payload = await verifyToken(authCookie);
+        if (!payload) {
+            return {
+                success: false,
+                error: 'Session invalide. Veuillez vous reconnecter.',
+                needsAuth: true
+            };
+        }
+
+        const userId = payload.userId;
 
         // Find User in Prisma
         const user = await prisma.user.findUnique({

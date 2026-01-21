@@ -8,6 +8,7 @@ import {
     rejectOrganisation,
     suspendOrganisation
 } from '@/actions/super-admin';
+import { createOrganizationAction } from '@/application/actions/organization.actions';
 import {
     Building2,
     Users,
@@ -69,6 +70,17 @@ export default function SuperAdminDashboard() {
     const [adminName, setAdminName] = useState('');
     const [isActioning, setIsActioning] = useState(false);
 
+    // New Organization Modal
+    const [createModalOpen, setCreateModalOpen] = useState(false);
+    const [newOrgData, setNewOrgData] = useState({
+        name: '',
+        siret: '',
+        adminEmail: '',
+        adminName: ''
+    });
+    const [isCreating, setIsCreating] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+
     useEffect(() => {
         fetchData();
     }, [statusFilter]);
@@ -111,6 +123,49 @@ export default function SuperAdminDashboard() {
         setIsActioning(false);
     };
 
+    const handleCreateOrg = async () => {
+        if (!newOrgData.name || !newOrgData.adminEmail) {
+            setCreateError('Le nom de l\'organisation et l\'email admin sont requis.');
+            return;
+        }
+
+        setIsCreating(true);
+        setCreateError(null);
+
+        try {
+            // 1. Create the organisation
+            const result = await createOrganizationAction({
+                name: newOrgData.name,
+                siret: newOrgData.siret,
+                email: newOrgData.adminEmail
+            });
+
+            if (result.success && result.organization) {
+                // 2. Activate it (this creates the admin role and sends an invitation)
+                const activationResult = await activateOrganisation(
+                    result.organization.id,
+                    newOrgData.adminEmail,
+                    newOrgData.adminName
+                );
+
+                if (activationResult.success) {
+                    await fetchData();
+                    setCreateModalOpen(false);
+                    setNewOrgData({ name: '', siret: '', adminEmail: '', adminName: '' });
+                } else {
+                    setCreateError(activationResult.error || 'Erreur lors de l\'activation');
+                }
+            } else {
+                setCreateError(result.error || 'Erreur lors de la création');
+            }
+        } catch (error) {
+            console.error('Create Org Error:', error);
+            setCreateError('Une erreur inattendue est survenue.');
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
     const filteredOrgs = orgs.filter(o =>
         o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (o.siret && o.siret.includes(searchTerm)) ||
@@ -146,6 +201,13 @@ export default function SuperAdminDashboard() {
                     <div className="flex items-center gap-6">
                         <Button variant="outline" size="sm" onClick={() => window.location.href = '/super-admin/groups'}>
                             <Network size={18} className="mr-2 text-indigo-600" /> Gérer les Réseaux
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200"
+                            onClick={() => setCreateModalOpen(true)}
+                        >
+                            <Plus size={18} className="mr-2" /> Nouvel OF
                         </Button>
                         <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
                             <ShieldCheck size={16} className="text-emerald-500" />
@@ -410,6 +472,84 @@ export default function SuperAdminDashboard() {
                             }
                         >
                             {isActioning ? 'En cours...' : 'Confirmer'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create Organization Modal */}
+            <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Plus className="text-indigo-600" size={20} />
+                            Créer un nouvel OF
+                        </DialogTitle>
+                        <DialogDescription>
+                            Initialisez une nouvelle structure immédiatement opérationnelle.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 block mb-1">Nom de l'organisation *</label>
+                                <Input
+                                    placeholder="Ex: ACME Academy"
+                                    value={newOrgData.name}
+                                    onChange={(e) => setNewOrgData({ ...newOrgData, name: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 block mb-1">Numéro SIRET</label>
+                                <Input
+                                    placeholder="14 chiffres"
+                                    value={newOrgData.siret}
+                                    onChange={(e) => setNewOrgData({ ...newOrgData, siret: e.target.value })}
+                                />
+                            </div>
+                            <div className="pt-2 border-t border-slate-100">
+                                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-3">Administrateur Initial</p>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-sm font-medium text-slate-700 block mb-1">Nom (Optionnel)</label>
+                                        <Input
+                                            placeholder="Ex: Jean Dupont"
+                                            value={newOrgData.adminName}
+                                            onChange={(e) => setNewOrgData({ ...newOrgData, adminName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-slate-700 block mb-1">Email *</label>
+                                        <Input
+                                            type="email"
+                                            placeholder="admin@organisme.fr"
+                                            value={newOrgData.adminEmail}
+                                            onChange={(e) => setNewOrgData({ ...newOrgData, adminEmail: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {createError && (
+                            <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex items-center gap-2 text-xs text-red-600">
+                                <AlertTriangle size={14} />
+                                {createError}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>
+                            Annuler
+                        </Button>
+                        <Button
+                            onClick={handleCreateOrg}
+                            disabled={isCreating}
+                            className="bg-indigo-600 hover:bg-indigo-700"
+                        >
+                            {isCreating ? 'Initialisation...' : 'Créer & Activer'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

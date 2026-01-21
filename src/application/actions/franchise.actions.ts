@@ -3,11 +3,15 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getCurrentUserId } from "@/lib/auth-utils";
+import { requireAuth, requirePermission } from "@/lib/server-guard";
 
-// --- FRANCHISE CRUD ---
+// --- FRANCHISE CRUD --- Protected by Server Guards
 
 export async function getFranchisesAction(organisationId: string) {
     try {
+        // Guard: Require authentication
+        await requireAuth();
+
         const franchises = await (prisma as any).franchise.findMany({
             where: { organisationId },
             include: {
@@ -43,6 +47,9 @@ export async function createFranchiseAction(data: {
     notes?: string;
 }) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         const franchise = await (prisma as any).franchise.create({
             data: {
                 organisationId: data.organisationId,
@@ -93,6 +100,9 @@ export async function updateFranchiseAction(franchiseId: string, data: {
     notes?: string;
 }) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         const franchise = await (prisma as any).franchise.update({
             where: { id: franchiseId },
             data
@@ -108,6 +118,9 @@ export async function updateFranchiseAction(franchiseId: string, data: {
 
 export async function deleteFranchiseAction(franchiseId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         // First detach all agencies from this franchise
         await (prisma as any).agency.updateMany({
             where: { franchiseId },
@@ -130,6 +143,9 @@ export async function deleteFranchiseAction(franchiseId: string) {
 
 export async function assignAgencyToFranchiseAction(agencyId: string, franchiseId: string | null) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).agency.update({
             where: { id: agencyId },
             data: { franchiseId: franchiseId }
@@ -146,6 +162,9 @@ export async function assignAgencyToFranchiseAction(agencyId: string, franchiseI
 
 export async function getUserFranchisesAction(userId: string) {
     try {
+        // Guard: Require authentication
+        await requireAuth();
+
         const userFranchises = await (prisma as any).userFranchise.findMany({
             where: { userId },
             include: { franchise: true }
@@ -159,6 +178,9 @@ export async function getUserFranchisesAction(userId: string) {
 
 export async function assignUserToFranchiseAction(userId: string, franchiseId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).userFranchise.upsert({
             where: { userId_franchiseId: { userId, franchiseId } },
             create: { userId, franchiseId },
@@ -174,6 +196,9 @@ export async function assignUserToFranchiseAction(userId: string, franchiseId: s
 
 export async function removeUserFromFranchiseAction(userId: string, franchiseId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).userFranchise.delete({
             where: { userId_franchiseId: { userId, franchiseId } }
         });
@@ -184,6 +209,7 @@ export async function removeUserFromFranchiseAction(userId: string, franchiseId:
         return { success: false, error: "Failed to remove user from franchise" };
     }
 }
+
 
 // --- ACCESS CHECK HELPER ---
 

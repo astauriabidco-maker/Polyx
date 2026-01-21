@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { checkAgencyAccess } from '@/lib/auth-utils';
+import { requireAuth, requirePermission } from '@/lib/server-guard';
 
 export async function getAgenciesAction(organisationId: string) {
     try {
@@ -30,6 +31,9 @@ export async function getAgenciesAction(organisationId: string) {
 
 export async function createAgencyAction(organisationId: string, formData: FormData) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
         const managerName = formData.get('managerName') as string;
@@ -67,6 +71,9 @@ export async function createAgencyAction(organisationId: string, formData: FormD
 
 export async function updateAgencyAction(organisationId: string, agencyId: string, formData: FormData) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
         const managerName = formData.get('managerName') as string;
@@ -103,6 +110,9 @@ export async function updateAgencyAction(organisationId: string, agencyId: strin
 
 export async function deleteAgencyAction(organisationId: string, agencyId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).agency.delete({
             where: { id: agencyId }
         });
@@ -116,6 +126,9 @@ export async function deleteAgencyAction(organisationId: string, agencyId: strin
 
 export async function getUserAgenciesAction(userId: string) {
     try {
+        // Guard: Require authentication
+        await requireAuth();
+
         const userAgencies = await (prisma as any).userAgency.findMany({
             where: { userId },
             include: { agency: true }
@@ -129,6 +142,9 @@ export async function getUserAgenciesAction(userId: string) {
 
 export async function assignUserToAgencyAction(userId: string, agencyId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         const assignment = await (prisma as any).userAgency.create({
             data: { userId, agencyId }
         });
@@ -141,6 +157,9 @@ export async function assignUserToAgencyAction(userId: string, agencyId: string)
 
 export async function removeUserFromAgencyAction(userId: string, agencyId: string) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).userAgency.delete({
             where: {
                 userId_agencyId: { userId, agencyId }
@@ -154,6 +173,9 @@ export async function removeUserFromAgencyAction(userId: string, agencyId: strin
 }
 export async function updateAgencyDistributionAction(agencyId: string, distributionMode: string, distributionConfig: any = {}) {
     try {
+        // Guard: Require FRANCHISE_MANAGE permission
+        await requirePermission('FRANCHISE_MANAGE');
+
         await (prisma as any).agency.update({
             where: { id: agencyId },
             data: {
@@ -168,3 +190,4 @@ export async function updateAgencyDistributionAction(agencyId: string, distribut
         return { success: false, error: "Failed to update distribution settings" };
     }
 }
+

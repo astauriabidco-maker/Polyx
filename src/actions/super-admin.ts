@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/security';
 
 /**
  * Security: Verifies if the current user is a Global Admin.
@@ -11,21 +12,20 @@ async function checkGlobalAdmin() {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
-    if (!token || !token.startsWith('mock_token_')) {
+    if (!token) {
         throw new Error('Non authentifié');
     }
 
-    const userId = token.replace('mock_token_', '');
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isGlobalAdmin: true }
-    });
+    const payload = await verifyToken(token);
+    if (!payload) {
+        throw new Error('Token invalide');
+    }
 
-    if (!user?.isGlobalAdmin) {
+    if (!payload.isGlobalAdmin) {
         throw new Error('Accès réservé aux administrateurs plateforme');
     }
 
-    return userId;
+    return payload.userId;
 }
 
 /**

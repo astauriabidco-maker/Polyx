@@ -2,13 +2,17 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { requirePermission, requireAuth } from '@/lib/server-guard';
 
 // ============================================
-// ROLES CRUD (Prisma-backed)
+// ROLES CRUD (Prisma-backed) - Protected by Server Guards
 // ============================================
 
 export async function getRolesAction(organisationId: string) {
     try {
+        // Guard: Require authentication (viewing roles is allowed for authenticated users)
+        await requireAuth();
+
         const roles = await (prisma as any).role.findMany({
             where: { organisationId },
             include: {
@@ -41,6 +45,9 @@ export async function getRolesAction(organisationId: string) {
 
 export async function createRoleAction(organisationId: string, formData: FormData) {
     try {
+        // Guard: Require ROLES_MANAGE permission
+        await requirePermission('ROLES_MANAGE');
+
         const name = formData.get('name') as string;
         const permissionIds = formData.getAll('permissions') as string[];
         const description = formData.get('description') as string;
@@ -85,6 +92,9 @@ export async function createRoleAction(organisationId: string, formData: FormDat
 
 export async function updateRoleAction(organisationId: string, roleId: string, formData: FormData) {
     try {
+        // Guard: Require ROLES_MANAGE permission
+        await requirePermission('ROLES_MANAGE');
+
         const name = formData.get('name') as string;
         const permissionIds = formData.getAll('permissions') as string[];
 
@@ -128,6 +138,9 @@ export async function updateRoleAction(organisationId: string, roleId: string, f
 
 export async function deleteRoleAction(organisationId: string, roleId: string) {
     try {
+        // Guard: Require ROLES_MANAGE permission
+        await requirePermission('ROLES_MANAGE');
+
         // Check if role exists and is not system default
         const existing = await (prisma as any).role.findUnique({
             where: { id: roleId },

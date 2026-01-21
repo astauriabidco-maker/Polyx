@@ -1,12 +1,13 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import twilio from 'twilio';
+import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/security';
+import Twilio from 'twilio';
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { cookies } from 'next/headers';
 
-const AccessToken = twilio.jwt.AccessToken;
+const AccessToken = Twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
 /**
@@ -20,11 +21,16 @@ export async function POST(request: NextRequest) {
         const cookieStore = await cookies();
         const token = cookieStore.get('auth_token')?.value;
 
-        if (!token || !token.startsWith('mock_token_')) {
-            return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+        if (!token) {
+            return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
         }
 
-        const userId = token.replace('mock_token_', '');
+        const payload = await verifyToken(token);
+        if (!payload) {
+            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        }
+
+        const userId = payload.userId;
 
         const { orgId } = await request.json();
 
