@@ -14,7 +14,7 @@ import { RefreshCcw } from 'lucide-react';
 import { syncEdofDossiersAction } from '@/application/actions/edof.actions';
 
 export default function LearnersPage() {
-    const { activeOrganization } = useAuthStore();
+    const { activeOrganization, isNexusMode, getActiveOrgIds } = useAuthStore();
     const router = useRouter();
     const [learners, setLearners] = useState<Learner[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -22,16 +22,17 @@ export default function LearnersPage() {
     const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
-        if (activeOrganization) {
-            loadLearners();
-        }
-    }, [activeOrganization]);
+        loadLearners();
+    }, [activeOrganization?.id, isNexusMode]);
 
     async function loadLearners() {
-        console.log('LearnersPage: Loading for org:', activeOrganization?.id);
+        const orgIds = getActiveOrgIds();
+        if (orgIds.length === 0) return;
+
         setIsLoading(true);
-        const res = await getLearnersAction(activeOrganization!.id);
-        console.log('LearnersPage: API Response:', res);
+        // Use consolidated action (accepts string or array)
+        const res = await getLearnersAction(orgIds.length === 1 ? orgIds[0] : orgIds);
+
         if (res.success && res.learners) {
             setLearners(res.learners as unknown as Learner[]);
         }
@@ -100,6 +101,7 @@ export default function LearnersPage() {
                 <CardHeader className="bg-slate-50/50 border-b border-slate-100">
                     <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
                         <span className="w-1/4">Apprenant</span>
+                        {isNexusMode && <span className="w-1/6">Origine</span>}
                         <span className="w-1/6">Financement</span>
                         <span className="w-1/6">Statut Dossier</span>
                         <span className="w-1/6">Progression</span>
@@ -116,7 +118,7 @@ export default function LearnersPage() {
                         </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
-                            {filteredLearners.map((learner) => {
+                            {filteredLearners.map((learner: any) => {
                                 const folder = learner.folders?.[0]; // Get most recent folder
                                 return (
                                     <div
@@ -130,6 +132,14 @@ export default function LearnersPage() {
                                             </p>
                                             <p className="text-xs text-slate-400">{learner.email}</p>
                                         </div>
+
+                                        {isNexusMode && (
+                                            <div className="w-1/6">
+                                                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200 truncate block max-w-[140px]">
+                                                    {learner.organisation?.name || 'Inconnu'}
+                                                </span>
+                                            </div>
+                                        )}
 
                                         <div className="w-1/6">
                                             {folder ? (

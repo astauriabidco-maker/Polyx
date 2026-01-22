@@ -1,15 +1,23 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, MapPin, Network, Plus, Store } from 'lucide-react';
+import { Building2, Store, Network } from 'lucide-react';
 import { OrganizationTab } from './_components/OrganizationTab';
 import { AgenciesTab } from './_components/AgenciesTab';
 import { FranchisesTab } from './_components/FranchisesTab';
 import { useAuthStore } from '@/application/store/auth-store';
-import { Button } from '@/components/ui/button';
 
 export default function StructurePage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-slate-500">Chargement de la structure...</div>}>
+            <StructureContent />
+        </Suspense>
+    );
+}
+
+function StructureContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();

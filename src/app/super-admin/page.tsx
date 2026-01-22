@@ -54,7 +54,7 @@ export default function SuperAdminDashboard() {
 
     useEffect(() => {
         if (user && !(user as any).isGlobalAdmin) {
-            router.push('/app');
+            router.push('/app/dashboard');
         }
     }, [user, router]);
 
@@ -199,7 +199,7 @@ export default function SuperAdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-6">
-                        <Button variant="outline" size="sm" onClick={() => window.location.href = '/super-admin/groups'}>
+                        <Button variant="outline" size="sm" onClick={() => router.push('/app/network')}>
                             <Network size={18} className="mr-2 text-indigo-600" /> Gérer les Réseaux
                         </Button>
                         <Button
@@ -213,8 +213,8 @@ export default function SuperAdminDashboard() {
                             <ShieldCheck size={16} className="text-emerald-500" />
                             <span className="text-xs font-bold text-slate-600">Super-Admin Session</span>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => window.location.href = '/hub'}>
-                            <LayoutGrid size={18} className="mr-2" /> Retour au Hub
+                        <Button variant="ghost" size="sm" onClick={() => window.location.href = '/app/dashboard'}>
+                            <LayoutGrid size={18} className="mr-2" /> Retour au Dashboard
                         </Button>
                     </div>
                 </div>

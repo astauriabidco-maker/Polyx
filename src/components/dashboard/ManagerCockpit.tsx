@@ -7,7 +7,7 @@ import { DollarSign, Users, Award, Zap } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getManagerMetricsAction, getLeadQualityBySourceAction, getScriptPerformanceAction } from '@/application/actions/metrics.actions';
 
-export default function ManagerCockpit({ orgId }: { orgId: string }) {
+export default function ManagerCockpit({ orgId }: { orgId: string | string[] }) {
     const [stats, setStats] = useState<any>(null);
     const [sourceData, setSourceData] = useState<any[]>([]);
     const [scriptData, setScriptData] = useState<any[]>([]);
@@ -15,6 +15,7 @@ export default function ManagerCockpit({ orgId }: { orgId: string }) {
 
     useEffect(() => {
         async function load() {
+            setIsLoading(true);
             const [metricsRes, sourceRes, scriptRes] = await Promise.all([
                 getManagerMetricsAction(orgId),
                 getLeadQualityBySourceAction(orgId),

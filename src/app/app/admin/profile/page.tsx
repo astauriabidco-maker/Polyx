@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import OrganizationTab from '../structure/_components/OrganizationTab';
+import { OrganizationTab } from '../structure/_components/OrganizationTab';
 
 export default function ProfilePage() {
     return (

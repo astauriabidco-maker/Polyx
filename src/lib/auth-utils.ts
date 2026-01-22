@@ -117,6 +117,39 @@ export async function getAgencyWhereClause(organisationId: string, requestedAgen
 }
 
 /**
+ * Returns a consolidated prisma where clause for multiple organizations.
+ * Used for Nexus Mode.
+ */
+export async function getConsolidatedAgencyWhereClause(organisationIds: string[]) {
+    if (!organisationIds || organisationIds.length === 0) {
+        return { organisationId: { in: [] } };
+    }
+
+    // If only one, fallback to standard logic
+    if (organisationIds.length === 1) {
+        return getAgencyWhereClause(organisationIds[0]);
+    }
+
+    // For multiple orgs, we construct an OR array of clauses
+    const clauses = await Promise.all(organisationIds.map(async (id) => {
+        try {
+            return await getAgencyWhereClause(id);
+        } catch (e) {
+            // If access is denied for one org, we just skip it in consolidated view
+            return null;
+        }
+    }));
+
+    const validClauses = clauses.filter(c => c !== null);
+
+    if (validClauses.length === 0) {
+        return { organisationId: { in: [] } };
+    }
+
+    return { OR: validClauses };
+}
+
+/**
  * Get accessible franchise IDs for the current user
  */
 export async function getUserAccessibleFranchises(organisationId: string) {

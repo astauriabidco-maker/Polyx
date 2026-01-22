@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import AgenciesTab from '../structure/_components/AgenciesTab';
+import { AgenciesTab } from '../structure/_components/AgenciesTab';
 
 export default function AgenciesPage() {
     return (

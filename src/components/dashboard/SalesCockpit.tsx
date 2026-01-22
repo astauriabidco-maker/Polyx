@@ -8,7 +8,7 @@ import { getSalesMetricsAction } from '@/application/actions/metrics.actions';
 import { getVoiceSettingsAction } from '@/application/actions/communication.actions';
 import { PhoningSessionModal } from '@/components/sales/phoning-session-modal';
 
-export default function SalesCockpit({ userId, orgId }: { userId: string, orgId: string }) {
+export default function SalesCockpit({ userId, orgId }: { userId: string, orgId: string | string[] }) {
     const [stats, setStats] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSessionActive, setIsSessionActive] = useState(false);
@@ -16,9 +16,14 @@ export default function SalesCockpit({ userId, orgId }: { userId: string, orgId:
 
     useEffect(() => {
         async function load() {
+            setIsLoading(true);
+            // In Nexus mode (array), we might want to check the default org's telephony 
+            // or handle it differently. For now, we use the first one if it's an array.
+            const primaryOrgId = Array.isArray(orgId) ? orgId[0] : orgId;
+
             const [metricsRes, voiceRes] = await Promise.all([
                 getSalesMetricsAction(userId, orgId),
-                getVoiceSettingsAction(orgId)
+                getVoiceSettingsAction(primaryOrgId)
             ]);
 
             if (metricsRes.success) setStats(metricsRes);
@@ -36,7 +41,7 @@ export default function SalesCockpit({ userId, orgId }: { userId: string, orgId:
 
     const handleStartSession = () => {
         if (!isVoiceEnabled) {
-            alert("La téléphonie n'est pas activée pour votre organisation. Veuillez la configurer dans les réglages.");
+            alert("La téléphonie n'est pas activée pour cette organisation. En mode groupé, la téléphonie utilise votre organisation par défaut.");
             return;
         }
         setIsSessionActive(true);

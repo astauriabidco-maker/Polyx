@@ -81,8 +81,8 @@ export async function updateOrganizationAction(organisationId: string, data: {
     website?: string;
 }) {
     try {
-        // Guard: Require SETTINGS_EDIT permission
-        await requirePermission('SETTINGS_EDIT');
+        // Guard: Require STRUCTURE_MANAGE or legacy SETTINGS_EDIT permission
+        await requirePermission('STRUCTURE_MANAGE');
 
         const org = await (prisma as any).organisation.update({
             where: { id: organisationId },

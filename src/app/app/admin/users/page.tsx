@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,7 +18,15 @@ import { PageGuide } from '@/components/ui/page-guide';
 import { Building2, Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 
-export default function UsersPage({ hideHeader = false }: { hideHeader?: boolean }) {
+export default function UsersPage(props: { hideHeader?: boolean }) {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-slate-500">Chargement des utilisateurs...</div>}>
+            <UsersContent {...props} />
+        </Suspense>
+    );
+}
+
+function UsersContent({ hideHeader = false }: { hideHeader?: boolean }) {
     const { activeOrganization } = useAuthStore();
     const searchParams = useSearchParams();
     const [users, setUsers] = useState<User[]>([]);
@@ -335,4 +343,3 @@ export default function UsersPage({ hideHeader = false }: { hideHeader?: boolean
         </div>
     );
 }
-

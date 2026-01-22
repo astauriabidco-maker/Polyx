@@ -38,6 +38,9 @@ model User {
   calls          Call[]
   calendarEvents CalendarEvent[]
   formateur      Formateur? // Trainer profile if applicable
+  
+  // Franchise Development Pipeline
+  assignedFranchises Franchise[] @relation("FranchiseAssignment")
 
   // B2B Portal
   clientCompanyId String?
@@ -998,6 +1001,11 @@ model Franchise {
   zipCode        String?
   
   isActive       Boolean      @default(true)
+  
+  // Pipeline & Assignment
+  pipelineStage     String    @default("PROSPECTION") // PROSPECTION, DIP, SIGNATURE, ACTIF
+  assignedToId      String?
+  assignedTo        User?     @relation("FranchiseAssignment", fields: [assignedToId], references: [id])
   
   // Contract Management
   contractStatus    String    @default("PENDING") // PENDING, ACTIVE, EXPIRED, TERMINATED

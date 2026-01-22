@@ -8,23 +8,12 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 export default function DashboardPage() {
-    const { user, activeOrganization, hasPermission, isLoading } = useAuthStore();
+    const { user, activeOrganization, hasPermission, isLoading, isNexusMode, getActiveOrgIds } = useAuthStore();
     const router = useRouter();
 
     useEffect(() => {
         if (!isLoading && user && activeOrganization) {
-            // 0. Learner Redirection
-            const isLearner = user.memberships.some(m =>
-                m.organizationId === activeOrganization.id &&
-                ((typeof m.role === 'string' ? m.role === 'LEARNER' || m.role === 'Apprenant' : (m.role as any).name === 'Apprenant'))
-            );
-            // simplified check: if NO permissions typical of staff?
-            // Best to rely on a specific role check if available in store.
-            // For now, let's assume if they have NO permissions, they might be learners? 
-            // Or explicitly check if they are NOT staff.
-
-            // Better: Let's assume the AuthStore provides roles. 
-            // But for now, let's rely on the role name or a helper.
+            // ... routing logic could go here if needed ...
         }
     }, [user, activeOrganization, isLoading]);
 
@@ -39,15 +28,7 @@ export default function DashboardPage() {
 
     // --- SMART ROUTING LOGIC ---
 
-    // 0. Learner Check (Client-side redirect)
-    // We do this here to avoid splash screen if possible, but inside effect is safer for router usage.
-    // However, we can return the redirect component or just push.
-    // If we simply use `window.location` or `router.push` inside the component body it might cause hydration issues.
-    // Let's us a simple check:
-
-    // Temporary: Check if user has "Apprenant" role in current org membership
-    const currentMember = user.memberships.find(m => m.organizationId === activeOrganization.id);
-    // Note: Role name might be "LEARNER" or "Apprenant".
+    const currentMember = user.memberships?.find(m => m.organizationId === activeOrganization.id);
     const isLearnerRole = currentMember?.role === 'LEARNER' ||
         currentMember?.role === 'Apprenant' ||
         (currentMember?.role as any)?.id === 'LEARNER' ||
@@ -63,14 +44,13 @@ export default function DashboardPage() {
         );
     }
 
+    const orgIds = getActiveOrgIds();
 
     // 1. Manager / Admin View
-    // Condition: Can view finances OR Edit Users (typical admin traits)
     if (hasPermission('canViewFinance') || hasPermission('canEditUsers')) {
-        return <ManagerCockpit orgId={activeOrganization.id} />;
+        return <ManagerCockpit orgId={orgIds.length === 1 ? orgIds[0] : (orgIds as any)} />;
     }
 
     // 2. Sales / Formateur View
-    // Default fallback for operational users
-    return <SalesCockpit userId={user.id} orgId={activeOrganization.id} />;
+    return <SalesCockpit userId={user.id} orgId={orgIds.length === 1 ? orgIds[0] : (orgIds as any)} />;
 }

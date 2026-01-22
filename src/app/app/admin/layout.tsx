@@ -29,6 +29,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { label: 'Profil & Identité', href: '/app/admin/profile', icon: Building2 },
         { label: 'Agences', href: '/app/admin/agencies', icon: MapPin },
         { label: 'Équipes & Accès', href: '/app/admin/teams', icon: Users },
+        { label: 'Intégrations & API', href: '/app/settings/integrations', icon: Globe },
     ];
 
     return (

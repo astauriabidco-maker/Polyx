@@ -118,15 +118,22 @@ export async function getLearnerDocumentsAction(learnerId: string) {
     }
 }
 
-// ============================================
-// LEARNER ADMIN ACTIONS
-// ============================================
+import { getAgencyWhereClause, getConsolidatedAgencyWhereClause } from '@/lib/auth-utils';
 
-export async function getLearnersAction(orgId: string) {
+export async function getLearnersAction(orgIdOrIds: string | string[]) {
     try {
+        let whereClause: any;
+
+        if (Array.isArray(orgIdOrIds)) {
+            whereClause = await getConsolidatedAgencyWhereClause(orgIdOrIds);
+        } else {
+            whereClause = await getAgencyWhereClause(orgIdOrIds);
+        }
+
         const learners = await prisma.learner.findMany({
-            where: { organisationId: orgId },
+            where: whereClause,
             include: {
+                organisation: true,
                 folders: {
                     orderBy: { createdAt: 'desc' },
                     take: 1

@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { Lead, LeadWithOrg, LeadStatus, SalesStage } from '@/domain/entities/lead';
-import { getAgencyWhereClause } from '@/lib/auth-utils';
+import { getAgencyWhereClause, getConsolidatedAgencyWhereClause } from '@/lib/auth-utils';
 import { LeadService } from '@/application/services/lead.service';
 import { AttributionService } from '@/application/services/attribution.service';
 import { GamificationService, GamificationActivity } from '@/application/services/gamification.service';
@@ -11,25 +11,22 @@ import { revalidatePath } from 'next/cache';
 // Mimics a real DB query with latency
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-export async function getLeadsAction(organizationId: string, isUnified: boolean = false, agencyId?: string): Promise<{ success: boolean, leads?: LeadWithOrg[], error?: string }> {
+export async function getLeadsAction(organizationIdOrIds: string | string[], isUnified: boolean = false, agencyId?: string): Promise<{ success: boolean, leads?: LeadWithOrg[], error?: string }> {
     try {
         let resultLeads: any[] = [];
+        let whereClause: any;
 
-        const whereClause = await getAgencyWhereClause(organizationId, agencyId);
-
-        if (isUnified) {
-            resultLeads = await (prisma as any).lead.findMany({
-                where: whereClause,
-                orderBy: { createdAt: 'desc' },
-                include: { organisation: true }
-            });
+        if (Array.isArray(organizationIdOrIds)) {
+            whereClause = await getConsolidatedAgencyWhereClause(organizationIdOrIds);
         } else {
-            resultLeads = await (prisma as any).lead.findMany({
-                where: whereClause,
-                orderBy: { createdAt: 'desc' },
-                include: { organisation: true }
-            });
+            whereClause = await getAgencyWhereClause(organizationIdOrIds, agencyId);
         }
+
+        resultLeads = await (prisma as any).lead.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            include: { organisation: true }
+        });
 
         const enrichedLeads: LeadWithOrg[] = resultLeads.map(lead => ({
             id: lead.id,

@@ -16,7 +16,8 @@ export async function getFranchisesAction(organisationId: string) {
             where: { organisationId },
             include: {
                 agencies: { select: { id: true, name: true, city: true } },
-                users: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } }
+                users: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
+                assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } }
             },
             orderBy: { name: 'asc' }
         });
@@ -44,6 +45,8 @@ export async function createFranchiseAction(data: {
     dipSentDate?: Date | null;
     royaltyRate?: number;
     leadPrice?: number;
+    pipelineStage?: string;
+    assignedToId?: string;
     notes?: string;
 }) {
     try {
@@ -68,6 +71,8 @@ export async function createFranchiseAction(data: {
                 dipSentDate: data.dipSentDate,
                 royaltyRate: data.royaltyRate || 0,
                 leadPrice: data.leadPrice || 0,
+                pipelineStage: data.pipelineStage || "PROSPECTION",
+                assignedToId: data.assignedToId,
                 notes: data.notes
             }
         });
@@ -97,6 +102,8 @@ export async function updateFranchiseAction(franchiseId: string, data: {
     dipSentDate?: Date | null;
     royaltyRate?: number;
     leadPrice?: number;
+    pipelineStage?: string;
+    assignedToId?: string;
     notes?: string;
 }) {
     try {

@@ -7,21 +7,71 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { ShieldCheck, Mail, Phone, Globe, Upload, Brain, CheckCircle, AlertTriangle, Key, Zap, RotateCcw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { getAIConfigAction, updateAIConfigAction, testAIConnectionAction } from '@/application/actions/ai-settings.actions';
+import { updateOrganizationAction } from '@/application/actions/organization.actions';
+import { getSessionAction } from '@/application/actions/auth.actions';
+import { toast } from '@/components/ui/use-toast';
 
 export function OrganizationTab() {
-    const { activeOrganization } = useAuthStore();
+    const { activeOrganization, login } = useAuthStore();
+    const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState({
+        name: activeOrganization?.name || '',
+        siret: activeOrganization?.siret || '',
+        nda: activeOrganization?.nda || '',
+        email: activeOrganization?.email || '',
+        phone: activeOrganization?.phone || '',
+        website: activeOrganization?.website || ''
+    });
+
+    useEffect(() => {
+        if (activeOrganization) {
+            setFormData({
+                name: activeOrganization.name || '',
+                siret: activeOrganization.siret || '',
+                nda: activeOrganization.nda || '',
+                email: activeOrganization.email || '',
+                phone: activeOrganization.phone || '',
+                website: activeOrganization.website || ''
+            });
+        }
+    }, [activeOrganization]);
 
     if (!activeOrganization) return <div className="p-8">Chargement...</div>;
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        setTimeout(() => {
-            alert("Profil mis à jour !");
+        try {
+            const res = await updateOrganizationAction(activeOrganization.id, formData);
+            if (res.success) {
+                // Refresh session to sync global store and header/sidebar
+                const session = await getSessionAction();
+                if (session.success && session.user && session.organization && session.membership && session.permissions) {
+                    login(session.user as any, session.organization as any, session.membership as any, session.permissions as any);
+                }
+                toast({
+                    title: "Profil mis à jour",
+                    description: "Les informations de l'organisation ont été enregistrées.",
+                });
+            } else {
+                toast({
+                    title: "Erreur",
+                    description: res.error || "Impossible de mettre à jour le profil.",
+                    variant: "destructive"
+                });
+            }
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: "Une erreur inattendue est survenue.",
+                variant: "destructive"
+            });
+        } finally {
             setIsLoading(false);
-        }, 800);
+        }
     };
 
     return (
@@ -43,22 +93,35 @@ export function OrganizationTab() {
                     <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-700">Raison Sociale</label>
-                            <Input defaultValue={activeOrganization.name} className="bg-slate-50" readOnly />
+                            <Input
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                className="focus:ring-indigo-500"
+                            />
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-700">SIRET</label>
-                            <Input defaultValue={activeOrganization.siret || ''} className="bg-slate-50" readOnly />
+                            <Input
+                                value={formData.siret}
+                                onChange={(e) => setFormData({ ...formData, siret: e.target.value })}
+                                className="focus:ring-indigo-500"
+                            />
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-700">NDA (Déclaration d'Activité)</label>
-                            <Input placeholder="ex: 11 75 12345 75" defaultValue={activeOrganization.nda || ''} />
+                            <Input
+                                placeholder="ex: 11 75 12345 75"
+                                value={formData.nda}
+                                onChange={(e) => setFormData({ ...formData, nda: e.target.value })}
+                            />
                         </div>
                         <div className="flex items-center space-x-3 pt-6 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
                             <input
                                 type="checkbox"
                                 checked={activeOrganization.qualiopi}
                                 className="h-5 w-5 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                                readOnly
+                                onChange={() => { }} // Qualiopi is usually admin-only or system-set, keeping it display-only for now
+                                disabled
                             />
                             <div className="flex flex-col">
                                 <label className="text-sm font-bold text-emerald-800">Certification Qualiopi</label>
@@ -95,20 +158,30 @@ export function OrganizationTab() {
                                 <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                     <Mail size={14} className="text-slate-400" /> Email de gestion
                                 </label>
-                                <Input defaultValue={activeOrganization.contact?.email} />
+                                <Input
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                     <Phone size={14} className="text-slate-400" /> Téléphone fixe
                                 </label>
-                                <Input defaultValue={activeOrganization.contact?.phone} />
+                                <Input
+                                    value={formData.phone}
+                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                />
                             </div>
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                 <Globe size={14} className="text-slate-400" /> Site Web
                             </label>
-                            <Input defaultValue={activeOrganization.contact?.website || ''} placeholder="https://..." />
+                            <Input
+                                value={formData.website}
+                                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                                placeholder="https://..."
+                            />
                         </div>
                     </CardContent>
                 </Card>
@@ -127,7 +200,7 @@ export function OrganizationTab() {
                 </Card>
 
                 <div className="flex justify-end gap-3 pb-8">
-                    <Button type="button" variant="outline">Annuler</Button>
+                    <Button type="button" variant="outline" onClick={() => router.back()}>Annuler</Button>
                     <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 font-bold px-8" disabled={isLoading}>
                         {isLoading ? 'Enregistrement...' : 'Sauvegarder les modifications'}
                     </Button>

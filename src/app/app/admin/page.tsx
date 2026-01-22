@@ -46,6 +46,13 @@ export default function AdminDashboardPage() {
             href: '/app/admin/teams',
             icon: Users,
             color: 'bg-purple-50 text-purple-600 border-purple-100'
+        },
+        {
+            title: 'Intégrations & API',
+            description: 'Connectez vos outils (WhatsApp, Stripe, EDOF, LMS...).',
+            href: '/app/settings/integrations',
+            icon: Globe,
+            color: 'bg-amber-50 text-amber-600 border-amber-100'
         }
     ];
 

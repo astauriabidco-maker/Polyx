@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, MapPin, ShieldCheck, Settings2, Globe, Building, DollarSign } from 'lucide-react';
+import { Building2, Users, ShieldCheck, Settings2 } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 // Import existing page contents as components
@@ -11,6 +11,14 @@ import UsersPage from '../users/page';
 import RolesPage from '../roles/page';
 
 export default function NetworkManagementPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-slate-500">Chargement de l'administration...</div>}>
+            <ManagementContent />
+        </Suspense>
+    );
+}
+
+function ManagementContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'identity');

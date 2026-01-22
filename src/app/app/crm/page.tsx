@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Briefcase, ChevronRight, User, LayoutGrid, List, Clock } from 'lucide-react';
+import { Briefcase, ChevronRight, User, LayoutGrid, List, Clock, Globe } from 'lucide-react';
 import { Lead, LeadStatus, SalesStage } from '@/domain/entities/lead';
 import { getLeadsAction } from '@/application/actions/lead.actions';
 
@@ -24,7 +24,7 @@ export default function CrmPage() {
 }
 
 function CrmContent() {
-    const { activeOrganization } = useAuthStore();
+    const { activeOrganization, isNexusMode, getActiveOrgIds } = useAuthStore();
     const searchParams = useSearchParams();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -44,22 +44,20 @@ function CrmContent() {
     }, [searchParams, leads]);
 
     useEffect(() => {
-        if (activeOrganization?.id) {
-            loadLeads();
-        }
-    }, [activeOrganization?.id]);
+        loadLeads();
+    }, [activeOrganization?.id, isNexusMode]);
 
     const loadLeads = async () => {
-        if (!activeOrganization?.id) return;
+        const orgIds = getActiveOrgIds();
+        if (orgIds.length === 0) return;
+
         setIsLoading(true);
 
-        const res = await getLeadsAction(activeOrganization.id);
+        // Fetch leads for the current selection (either one org or multiple in Nexus mode)
+        const res = await getLeadsAction(orgIds.length === 1 ? orgIds[0] : orgIds);
 
         if (res.success && res.leads) {
             // Filter for CRM leads
-            // Include:
-            // - RDV_FIXE (New Appointment)
-            // - PROSPECT + NOUVEAU (New Fresh Inbound)
             const qualified = res.leads.filter(l =>
                 l.status === LeadStatus.RDV_FIXE ||
                 (l.status === LeadStatus.PROSPECT && l.salesStage === SalesStage.NOUVEAU)
@@ -79,9 +77,11 @@ function CrmContent() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                         <Briefcase className="text-indigo-600" />
-                        CRM / Closing Room
+                        CRM / Closing Room {isNexusMode && <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Nexus</span>}
                     </h1>
-                    <p className="text-slate-500">Gérez vos dossiers qualifiés et finalisez les ventes.</p>
+                    <p className="text-slate-500">
+                        {isNexusMode ? "Vision consolidée de tous vos leads qualifiés." : "Gérez vos dossiers qualifiés et finalisez les ventes."}
+                    </p>
                 </div>
                 <div className="flex items-center gap-4">
                     <PageGuide
@@ -125,8 +125,9 @@ function CrmContent() {
 
                     {/* Left: Queue List */}
                     <div className="col-span-4 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-slate-100 bg-slate-50">
+                        <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                             <h2 className="font-bold text-slate-700">Dossiers en cours ({leads.length})</h2>
+                            {isNexusMode && <Globe className="text-slate-300" size={16} />}
                         </div>
                         <div className="flex-1 overflow-y-auto p-2 space-y-2">
                             {isLoading ? (
@@ -152,7 +153,17 @@ function CrmContent() {
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-sm text-slate-500 mb-2">{lead.email}</p>
+
+                                        {/* Origin / Organization Name (Only in Nexus mode) */}
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <p className="text-sm text-slate-500 truncate flex-1">{lead.email}</p>
+                                            {isNexusMode && (
+                                                <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200 font-medium max-w-[120px] truncate">
+                                                    {(lead as any).organizationName || 'Inconnu'}
+                                                </span>
+                                            )}
+                                        </div>
+
                                         <div className="flex justify-between items-center text-xs text-slate-400">
                                             <span>{lead.city || 'Ville inconnue'}</span>
                                             <span className="flex items-center gap-1 font-medium text-indigo-600">
@@ -170,7 +181,7 @@ function CrmContent() {
                         {selectedLead ? (
                             <div className="flex-1 flex flex-col">
                                 {/* Lead Header */}
-                                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div className="p-6 border-b border-slate-100 justify-between items-center bg-slate-50/50 flex flex-wrap gap-4">
                                     <div className="flex items-center gap-4">
                                         <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
                                             {selectedLead.firstName.charAt(0)}{selectedLead.lastName.charAt(0)}
@@ -178,7 +189,7 @@ function CrmContent() {
                                         <div>
                                             <h2 className="font-bold text-lg text-slate-900">{selectedLead.firstName} {selectedLead.lastName}</h2>
                                             <div className="flex items-center gap-3 text-sm text-slate-500">
-                                                <span>Dossier #{selectedLead.id.slice(0, 8)} • {selectedLead.source}</span>
+                                                <span>Dossier #{selectedLead.id.slice(0, 8)} • {(selectedLead as any).organizationName || selectedLead.source}</span>
                                                 {selectedLead.nextCallbackAt && (
                                                     <span className="flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md font-bold text-[10px] uppercase">
                                                         <Clock size={12} />

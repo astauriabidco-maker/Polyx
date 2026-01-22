@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building, MapPin, DollarSign, LayoutDashboard, Settings2, Network, ClipboardCheck } from 'lucide-react';
+import { Building, MapPin, DollarSign, LayoutDashboard, Settings2, Network, ClipboardCheck, Zap } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 // Import exploitation components
@@ -12,6 +12,18 @@ import BillingManagementPage from '../settings/billing/page';
 import ExamManagementPage from './exams/page';
 
 export default function NetworkExploitationPage() {
+    return (
+        <Suspense fallback={
+            <div className="h-screen flex items-center justify-center bg-slate-50">
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent" />
+            </div>
+        }>
+            <NetworkContent />
+        </Suspense>
+    );
+}
+
+function NetworkContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'franchises');
@@ -42,17 +54,21 @@ export default function NetworkExploitationPage() {
 
                 <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-8">
                     <TabsList className="bg-slate-100/80 p-1 rounded-xl w-fit border border-slate-200/50 flex flex-wrap h-auto">
+                        <TabsTrigger value="network_lab" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <Zap size={16} className="text-amber-500" />
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Pipeline & Recrutement</span>
+                        </TabsTrigger>
                         <TabsTrigger value="franchises" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <Building size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Gestion Franchises</span>
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Annuaire du Réseau</span>
                         </TabsTrigger>
                         <TabsTrigger value="agencies" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <MapPin size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Agences & Points de Vente</span>
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Agences & Expansion</span>
                         </TabsTrigger>
                         <TabsTrigger value="billing" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <DollarSign size={16} />
-                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Redevances & Facturation</span>
+                            <span className="font-bold text-xs uppercase tracking-wider text-nowrap">Performance & Redevances</span>
                         </TabsTrigger>
                         <TabsTrigger value="exams" className="rounded-lg px-6 py-2 content-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <ClipboardCheck size={16} />
@@ -65,8 +81,12 @@ export default function NetworkExploitationPage() {
             {/* Content Area */}
             <div className="flex-1 overflow-auto p-4 md:p-8">
                 <Tabs value={activeTab}>
+                    <TabsContent value="network_lab" className="mt-0 ring-offset-0 focus-visible:ring-0">
+                        <FranchisesSettingsPage view="lab" />
+                    </TabsContent>
+
                     <TabsContent value="franchises" className="mt-0 ring-offset-0 focus-visible:ring-0">
-                        <FranchisesSettingsPage />
+                        <FranchisesSettingsPage view="parc" />
                     </TabsContent>
 
                     <TabsContent value="agencies" className="mt-0 ring-offset-0 focus-visible:ring-0">
@@ -85,3 +105,4 @@ export default function NetworkExploitationPage() {
         </div>
     );
 }
+

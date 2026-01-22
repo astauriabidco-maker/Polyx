@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createOrganizationAction } from '@/application/actions/organization.actions';
 import { activateOrganisation } from '@/actions/super-admin';
-import { checkIsGlobalAdminAction, logoutAction } from '@/application/actions/auth.actions';
+import { checkIsGlobalAdminAction, logoutAction, switchOrganizationAction } from '@/application/actions/auth.actions';
 import { useAuthStore } from '@/application/store/auth-store';
 import { HubGrid } from '@/components/dashboard/HubGrid';
 import { OrgAccessDTO } from '@/lib/permissions';
@@ -18,7 +18,7 @@ export default function HubPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
     const router = useRouter();
-    const { user, setActiveOrganization, logout } = useAuthStore();
+    const { user, login, logout } = useAuthStore();
 
     // Create Org State
     const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -51,15 +51,22 @@ export default function HubPage() {
         loadHub();
     }, [router]);
 
-    const handleSelectOrg = (orgId: string) => {
+    const handleSelectOrg = async (orgId: string) => {
         const selected = orgs.find(o => o.organisationId === orgId);
         if (selected) {
-            setActiveOrganization({
-                id: selected.organisationId,
-                name: selected.organisationName,
-                role: selected.role
-            }, selected.computedPermissions);
-            router.push('/app/dashboard');
+            // Persist selection on server and get full context
+            const res = await switchOrganizationAction(orgId);
+
+            if (res.success && res.user && res.organization && res.membership && res.permissions) {
+                // Update local store with full data
+                login(res.user as any, res.organization as any, res.membership as any, res.permissions as any);
+
+                // Force a full reload to the dashboard to clear any stale state
+                window.location.href = '/app/dashboard';
+            } else {
+                console.error('Failed to switch organization:', res.error);
+                alert(res.error || 'Erreur lors du changement d\'organisation');
+            }
         }
     };
 

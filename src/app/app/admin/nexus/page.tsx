@@ -193,7 +193,7 @@ export default function NexusPage() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <Button variant="outline" size="sm" onClick={() => router.push('/super-admin/groups')}>
+                    <Button variant="outline" size="sm" onClick={() => router.push('/app/network')}>
                         <Network size={16} className="mr-2 text-indigo-600" /> Gérer les Réseaux
                     </Button>
                     <Button

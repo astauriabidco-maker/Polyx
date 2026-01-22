@@ -119,9 +119,62 @@ export async function loginAction(input: FormData | string) {
 }
 
 
+export async function switchOrganizationAction(orgId: string) {
+    try {
+        const cookieStore = await cookies();
+        cookieStore.set('active_org_id', orgId, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7 // 7 days
+        });
+
+        // Resolve new context for the client
+        const token = cookieStore.get('auth_token')?.value;
+        if (!token) return { success: false, error: 'Session expirée' };
+
+        const { verifyToken } = await import('@/lib/security');
+        const payload = await verifyToken(token);
+        if (!payload) return { success: false, error: 'Token invalide' };
+
+        const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+        if (!user) return { success: false, error: 'Utilisateur introuvable' };
+
+        const accesses = await getUserOrgAccess(user.id);
+        const access = accesses.find(a => a.organisationId === orgId);
+
+        if (!access) return { success: false, error: 'Accès refusé à cet OF' };
+
+        const organization = await (prisma as any).organisation.findUnique({
+            where: { id: orgId },
+            include: { agencies: true }
+        });
+
+        const membership = {
+            organizationId: orgId,
+            role: access.role,
+            isActive: true,
+            joinedAt: new Date()
+        };
+
+        return {
+            success: true,
+            user,
+            organization,
+            membership,
+            permissions: access.computedPermissions
+        };
+    } catch (error) {
+        console.error('[AuthAction] Switch Org Error:', error);
+        return { success: false, error: 'Erreur lors du changement d\'organisation' };
+    }
+}
+
 export async function getSessionAction() {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
+    const activeOrgId = cookieStore.get('active_org_id')?.value;
 
     if (!token) {
         return { success: false };
@@ -146,11 +199,23 @@ export async function getSessionAction() {
     const accesses = await getUserOrgAccess(payload.userId);
 
     if (accesses.length === 0) {
-        return { success: true, user, organization: null, membership: null, permissions: null };
+        return { success: true, user, organization: null, membership: null, permissions: null, accessibleOrgs: [] };
     }
 
-    // Default to first access (In real app, we would store lastActiveOrgId)
-    const access = accesses[0];
+    // Build list of all accessible orgs for Nexus mode
+    const accessibleOrgs = accesses.map(a => ({
+        id: a.organisationId,
+        name: a.organisationName
+    }));
+
+    // Selection logic: use cookie if valid, otherwise fallback to first access
+    let access = accesses[0];
+    if (activeOrgId) {
+        const preferredAccess = accesses.find(a => a.organisationId === activeOrgId);
+        if (preferredAccess) {
+            access = preferredAccess;
+        }
+    }
 
     const organization = await (prisma as any).organisation.findUnique({
         where: { id: access.organisationId },
@@ -161,7 +226,7 @@ export async function getSessionAction() {
 
     const membership = {
         organizationId: organization.id,
-        role: access.role, // This is now a string name like "Administrateur"
+        role: access.role,
         isActive: true,
         joinedAt: new Date()
     };
@@ -171,7 +236,8 @@ export async function getSessionAction() {
         user,
         organization,
         membership,
-        permissions: access.computedPermissions
+        permissions: access.computedPermissions,
+        accessibleOrgs
     };
 }
 
