@@ -141,3 +141,146 @@ export async function inviteUserAction(formData: FormData, organisationId: strin
 export async function updateUserAction(formData: FormData, organisationId: string) {
     return inviteUserAction(formData, organisationId);
 }
+
+// ============================================
+// SUPER-ADMIN: ALL USERS (User-Centric View)
+// ============================================
+
+import { requireGlobalAdmin } from '@/lib/server-guard';
+
+/**
+ * Get all users across all organizations (Super-Admin only)
+ */
+export async function getAllUsersAction() {
+    await requireGlobalAdmin();
+    try {
+        const users = await prisma.user.findMany({
+            include: {
+                accessGrants: {
+                    include: {
+                        organisation: { select: { id: true, name: true } },
+                        role: { select: { id: true, name: true } }
+                    }
+                },
+                agencies: {
+                    include: { agency: { select: { id: true, name: true, organisationId: true } } }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        return {
+            success: true,
+            users: users.map(u => ({
+                id: u.id,
+                email: u.email,
+                firstName: u.firstName,
+                lastName: u.lastName,
+                isActive: u.isActive,
+                isGlobalAdmin: u.isGlobalAdmin,
+                accessCount: u.accessGrants.length,
+                accesses: u.accessGrants.map(g => ({
+                    orgId: g.organisation.id,
+                    orgName: g.organisation.name,
+                    roleId: g.role.id,
+                    roleName: g.role.name,
+                    isActive: g.isActive
+                })),
+                agencies: u.agencies.map(ua => ({
+                    id: ua.agency.id,
+                    name: ua.agency.name,
+                    orgId: ua.agency.organisationId
+                }))
+            }))
+        };
+    } catch (error) {
+        console.error('[UserAction] Get All Users Error:', error);
+        return { success: false, error: 'Echec de la récupération des utilisateurs' };
+    }
+}
+
+/**
+ * Create a user with multiple organization accesses (User-Centric approach)
+ */
+export async function createUserWithAccessesAction(data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    accesses: Array<{
+        orgId: string;
+        roleId: string;
+        agencyIds: string[] | 'ALL';
+    }>;
+}) {
+    await requireGlobalAdmin();
+    try {
+        const result = await prisma.$transaction(async (tx: any) => {
+            // 1. Upsert User
+            const user = await tx.user.upsert({
+                where: { email: data.email },
+                update: { firstName: data.firstName, lastName: data.lastName },
+                create: {
+                    email: data.email,
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    isActive: true
+                }
+            });
+
+            // 2. Create Access Grants for each org
+            for (const access of data.accesses) {
+                await tx.userAccessGrant.upsert({
+                    where: {
+                        userId_organisationId: {
+                            userId: user.id,
+                            organisationId: access.orgId
+                        }
+                    },
+                    update: { roleId: access.roleId, isActive: true },
+                    create: {
+                        userId: user.id,
+                        organisationId: access.orgId,
+                        roleId: access.roleId,
+                        isActive: true
+                    }
+                });
+
+                // 3. Handle agency assignments
+                if (access.agencyIds !== 'ALL') {
+                    // Clear existing agencies for this org
+                    const orgAgencies = await tx.agency.findMany({
+                        where: { organisationId: access.orgId },
+                        select: { id: true }
+                    });
+                    const orgAgencyIds = orgAgencies.map((a: any) => a.id);
+
+                    await tx.userAgency.deleteMany({
+                        where: {
+                            userId: user.id,
+                            agencyId: { in: orgAgencyIds }
+                        }
+                    });
+
+                    // Assign specific agencies
+                    if (access.agencyIds.length > 0) {
+                        await tx.userAgency.createMany({
+                            data: access.agencyIds.map(aid => ({
+                                userId: user.id,
+                                agencyId: aid
+                            })),
+                            skipDuplicates: true
+                        });
+                    }
+                }
+            }
+
+            return user;
+        });
+
+        revalidatePath('/super-admin/users');
+        return { success: true, user: result };
+    } catch (error) {
+        console.error('[UserAction] Create User With Accesses Error:', error);
+        return { success: false, error: 'Echec de la création de l\'utilisateur' };
+    }
+}

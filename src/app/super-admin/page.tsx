@@ -199,6 +199,9 @@ export default function SuperAdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-6">
+                        <Button variant="outline" size="sm" onClick={() => router.push('/super-admin/users')}>
+                            <Users size={18} className="mr-2 text-purple-600" /> Utilisateurs
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => router.push('/app/network')}>
                             <Network size={18} className="mr-2 text-indigo-600" /> Gérer les Réseaux
                         </Button>

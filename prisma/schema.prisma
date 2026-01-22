@@ -212,6 +212,28 @@ model OrganisationGroupMember {
 }
 
 // ============================================
+// ACCESS TEMPLATES (User-Centric Workflow)
+// ============================================
+
+model AccessTemplate {
+  id          String  @id @default(cuid())
+  name        String  // Ex: "Commercial National", "Directeur Régional"
+  description String?
+  isGlobal    Boolean @default(true) // true = visible for all Super-Admins
+
+  // Template Configuration (JSON)
+  // Structure: { accesses: [{ orgId: string, roleId: string, agencyIds: string[] | "ALL" }] }
+  config      String  // JSON stored as string for SQLite compatibility
+
+  createdById String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("access_templates")
+}
+
+// ============================================
 // FORMATEUR (TRAINER) MANAGEMENT
 // ============================================
 
