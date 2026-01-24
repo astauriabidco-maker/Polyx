@@ -25,7 +25,12 @@ export async function getLeadsAction(organizationIdOrIds: string | string[], isU
         resultLeads = await (prisma as any).lead.findMany({
             where: whereClause,
             orderBy: { createdAt: 'desc' },
-            include: { organisation: true }
+            include: {
+                organisation: true,
+                assessmentSessions: {
+                    orderBy: { createdAt: 'desc' }
+                }
+            }
         });
 
         const enrichedLeads: LeadWithOrg[] = resultLeads.map(lead => ({
@@ -50,6 +55,7 @@ export async function getLeadsAction(organizationIdOrIds: string | string[], isU
             history: [], // Would fetch Activities in real app
             metadata: lead.metadata || {},
             organizationName: lead.organisation?.name || 'Inconnu',
+            assessmentSessions: lead.assessmentSessions || [],
             createdAt: lead.createdAt || new Date(),
             updatedAt: lead.updatedAt || new Date()
         }));

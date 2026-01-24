@@ -33,8 +33,7 @@ export default function SalesPage() {
             const prospectionLeads = res.leads.filter(l =>
                 l.status !== LeadStatus.QUALIFIED &&
                 l.status !== LeadStatus.RDV_FIXE &&
-                l.status !== LeadStatus.ARCHIVED &&
-                !(l.status === LeadStatus.PROSPECT && l.salesStage === SalesStage.NOUVEAU)
+                l.status !== LeadStatus.ARCHIVED
             );
             setLeads(hydrateLeads(prospectionLeads) as Lead[]);
         }

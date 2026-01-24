@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Papa from 'papaparse';
-import { Upload, FileUp, Check, AlertTriangle, ArrowRight, Save, X } from 'lucide-react';
+import { Upload, FileUp, Check, AlertTriangle, ArrowRight, Save, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -99,6 +99,9 @@ export default function LeadImportPage() {
     return (
         <div className="container mx-auto max-w-4xl py-10 px-4">
             <div className="mb-8">
+                <Button variant="ghost" onClick={() => router.push('/app/leads')} className="mb-4 pl-0 hover:bg-transparent hover:text-indigo-600 transition-colors">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Retour au Pipeline
+                </Button>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">Import de Leads</h1>
                 <p className="text-slate-500">Ajoutez massivement des prospects via fichier CSV</p>
             </div>

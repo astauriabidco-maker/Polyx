@@ -3,88 +3,27 @@
 import { prisma } from '@/lib/prisma';
 import { encrypt } from '@/lib/crypto';
 import { revalidatePath } from 'next/cache';
-import { SendGridService } from '../services/sendgrid.service';
+import { EmailService } from '../services/email.service';
 import { TwilioService } from '../services/twilio.service';
 
-/**
- * SENDGRID ACTIONS
- */
-
-export async function getSendGridSettingsAction(orgId: string) {
-    try {
-        const config = await prisma.integrationConfig.findUnique({
-            where: { organisationId: orgId }
-        });
-        return { success: true, data: config };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-export async function saveSendGridConfigAction(orgId: string, data: {
-    enabled: boolean;
-    apiKey?: string;
-    fromEmail: string;
-    fromName: string;
-}) {
-    try {
-        const updateData: any = {
-            emailEnabled: data.enabled,
-            emailProvider: 'SENDGRID',
-            emailFromAddress: data.fromEmail,
-            emailFromName: data.fromName,
-        };
-
-        if (data.apiKey) {
-            updateData.emailApiKey = encrypt(data.apiKey);
-        }
-
-        await prisma.integrationConfig.upsert({
-            where: { organisationId: orgId },
-            create: { organisationId: orgId, ...updateData },
-            update: updateData
-        });
-
-        revalidatePath('/app/settings/integrations');
-        return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-export async function testSendGridConnectionAction(orgId: string) {
-    try {
-        const service = await SendGridService.create(orgId);
-        if (!service) throw new Error("Service non configuré");
-
-        const res = await service.testConnection();
-
-        await prisma.integrationConfig.update({
-            where: { organisationId: orgId },
-            data: {
-                emailLastTestedAt: new Date(),
-                emailTestStatus: res.success ? 'success' : 'failed'
-            } as any
-        });
-
-        return res;
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
+// SENDGRID ACTIONS REMOVED (Superseded by email.actions.ts)
 
 export async function sendEmailAction(orgId: string, options: { to: string; subject: string; text?: string; html?: string; templateId?: string; dynamicTemplateData?: any }) {
     try {
-        const service = await SendGridService.create(orgId);
-        if (!service) throw new Error("Service SendGrid non configuré");
-
         // 1. Check wallet
         const { WalletService } = await import('../services/wallet.service');
         const cost = 0.01; // transactional email cost
         await WalletService.debit(orgId, cost, `Envoi Email: ${options.subject}`, { recipient: options.to });
 
-        // 2. Send
-        return await service.sendEmail(options);
+        // 2. Send via generic EmailService (Supports SendGrid, SMTP, etc.)
+        // Note: Generic EmailService doesn't currently support 'templateId' logic across all providers.
+        // It mostly relies on 'html' content.
+        return await EmailService.send(orgId, {
+            to: options.to,
+            subject: options.subject,
+            text: options.text,
+            html: options.html || '<div></div>' // Fallback
+        });
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -418,9 +357,6 @@ export async function sendBulkWhatsAppAction(orgId: string, ids: string[], messa
 
 export async function sendBulkEmailAction(orgId: string, ids: string[], options: { subject: string; text?: string; html?: string; templateId?: string }, targetType: 'lead' | 'learner' = 'lead') {
     try {
-        const service = await SendGridService.create(orgId);
-        if (!service) throw new Error("Service SendGrid non configuré");
-
         const { WalletService } = await import('../services/wallet.service');
 
         const data: any[] = targetType === 'lead'
@@ -438,13 +374,12 @@ export async function sendBulkEmailAction(orgId: string, ids: string[], options:
                 const personalizedHtml = options.html?.replace('{{name}}', item.firstName || '');
 
                 await WalletService.debit(orgId, COST_PER_EMAIL, `Bulk Email (${targetType}): ${item.id}`, { id: item.id });
-                const res = await service.sendEmail({
+
+                const res = await EmailService.send(orgId, {
                     to: item.email,
                     subject: options.subject,
                     text: personalizedText,
-                    html: personalizedHtml,
-                    templateId: options.templateId,
-                    dynamicTemplateData: { name: item.firstName || '' }
+                    html: personalizedHtml || '<div></div>'
                 });
 
                 if (res.success) {

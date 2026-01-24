@@ -197,9 +197,22 @@ export interface Lead {
 
     history: LeadHistoryEntry[];
     touchpoints?: any[]; // LeadTouchpoint[]
+    assessmentSessions?: AssessmentSession[];
 
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface AssessmentSession {
+    id: string;
+    token: string;
+    status: 'PENDING' | 'COMPLETED' | 'EXPIRED';
+    targetLevel: string;
+    score?: number;
+    calculatedLevel?: string;
+    recommendation?: string;
+    createdAt: Date;
+    completedAt?: Date;
 }
 
 export interface LeadWithOrg extends Lead {

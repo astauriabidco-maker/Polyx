@@ -382,7 +382,12 @@ export async function acceptInvitationAction(data: {
                 });
 
                 if (existingGrant) {
-                    return { success: false, error: 'Vous avez déjà accès à cette organisation.' };
+                    // C'est ici qu'on gère l'activation : si l'utilisateur n'a pas de mot de passe, c'est une activation
+                    if (!user.hashedPassword) {
+                        // On continue pour mettre à jour le mot de passe
+                    } else {
+                        return { success: false, error: 'Vous avez déjà accès à cette organisation.' };
+                    }
                 }
             } else {
                 // Create new user with hashed password
@@ -397,15 +402,32 @@ export async function acceptInvitationAction(data: {
                 });
             }
 
-            // Create access grant
-            const accessGrant = await tx.userAccessGrant.create({
-                data: {
-                    userId: user.id,
-                    organisationId: invitation.organisationId,
-                    roleId: invitation.roleId,
-                    isActive: true
-                }
-            });
+            // Update user password & details if needed (activation case)
+            if (user && !user.hashedPassword) {
+                await tx.user.update({
+                    where: { id: user.id },
+                    data: {
+                        hashedPassword: hashedPassword,
+                        isActive: true,
+                        firstName: data.firstName,
+                        lastName: data.lastName
+                    }
+                });
+            }
+
+            // Create access grant if NOT exists
+            if (!await tx.userAccessGrant.findFirst({
+                where: { userId: user.id, organisationId: invitation.organisationId }
+            })) {
+                await tx.userAccessGrant.create({
+                    data: {
+                        userId: user.id,
+                        organisationId: invitation.organisationId,
+                        roleId: invitation.roleId,
+                        isActive: true
+                    }
+                });
+            }
 
             // Mark invitation as accepted
             await tx.invitation.update({
@@ -413,7 +435,7 @@ export async function acceptInvitationAction(data: {
                 data: { status: 'ACCEPTED' }
             });
 
-            return { user, accessGrant };
+            return { user };
         });
 
         if (!result.user) {

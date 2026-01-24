@@ -28,10 +28,11 @@ export interface ModuleCategory {
 
 export const APP_MODULES: ModuleCategory[] = [
     {
-        name: "Qualification",
-        color: "text-slate-400",
+        name: "Pilotage & Ventes",
+        color: "text-indigo-500",
         modules: [
             { id: 'DASHBOARD_VIEW', name: 'Tableau de Bord', href: '/app/dashboard', icon: ChartBar },
+            { id: 'ASSESSMENT_DASHBOARD', name: 'Pilotage Tests', href: '/app/dashboard/assessments', icon: GraduationCap },
             { id: 'AGENDA_VIEW', name: 'Agenda Intelligent', href: '/app/agenda', icon: Calendar },
             {
                 id: 'LEADS_VIEW', name: 'Leads & Marketing', href: '/app/leads', icon: Users, subItems: [
@@ -52,27 +53,39 @@ export const APP_MODULES: ModuleCategory[] = [
             { id: 'EXAMS_VIEW', name: 'Sessions d\'Examens', href: '/app/network?tab=exams', icon: ClipboardCheck },
             { id: 'TRAINERS_VIEW', name: 'Gestion Formateurs', href: '/app/formateur', icon: Users },
             { id: 'ACADEMY_VIEW', name: 'Pédagogie / Catalogue', href: '/app/academy/catalog', icon: BookOpen },
+            { id: 'ASSESSMENT_STUDIO', name: 'Studio Builder', href: '/app/dashboard/studio/builder', icon: FileSpreadsheet },
             { id: 'QUALITY_VIEW', name: 'Qualité / Audit', href: '/app/quality', icon: ShieldCheck },
             { id: 'WATCH_VIEW', name: 'Veille & Écosystème', href: '/app/veille', icon: Radar },
         ]
     },
     {
-        name: "Exploitation Réseau",
-        color: "text-purple-500",
+        name: "Exploitation & Finance",
+        color: "text-emerald-600",
         modules: [
             { id: 'NETWORK_VIEW', name: 'Pilotage Réseau', href: '/app/network', icon: Network },
+            { id: 'BILLING_VIEW', name: 'Facturation Client', href: '/app/billing/invoices', icon: FileText },
+            { id: 'BPF_VIEW', name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet },
+            { id: 'STRATEGIC_VIEW', name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit },
+        ]
+    },
+    {
+        name: "Paramètres & Système",
+        color: "text-slate-500",
+        modules: [
             {
-                id: 'ADMIN_VIEW', name: 'Administration', href: '/app/admin', icon: ShieldCheck, subItems: [
+                id: 'ADMIN_VIEW', name: 'Administration', href: '/app/admin', icon: Settings2, subItems: [
                     { id: 'ROLES_MANAGE', name: 'Gestion des Rôles' },
                     { id: 'USERS_MANAGE', name: 'Gestion des Équipes' },
                     { id: 'STRUCTURE_MANAGE', name: 'Structure & Agences' }
                 ]
             },
             { id: 'INTEGRATIONS_VIEW', name: 'Intégrations & API', href: '/app/settings/integrations', icon: Globe },
-            { id: 'BILLING_VIEW', name: 'Facturation Client', href: '/app/billing/invoices', icon: FileText },
-            { id: 'AUDIT_VIEW', name: 'Audit & Contrôle', href: '/app/audit', icon: ShieldCheck },
-            { id: 'BPF_VIEW', name: 'Bilan Pédagogique (BPF)', href: '/app/bpf', icon: FileSpreadsheet },
-            { id: 'STRATEGIC_VIEW', name: 'Cockpit Stratégique', href: '/app/reporting', icon: BrainCircuit },
+            { id: 'AUDIT_VIEW', name: 'Audit & Sécurité', href: '/app/audit', icon: ShieldCheck },
+            {
+                id: 'NEXUS_VIEW', name: 'Nexus Admin', href: '/app/admin/nexus', icon: Zap, subItems: [
+                    { id: 'PLATFORM_SETTINGS', name: 'Identité Plateforme', hrefPath: '/app/admin/nexus/settings' }
+                ]
+            },
         ]
     }
 ];

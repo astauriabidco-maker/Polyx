@@ -112,6 +112,9 @@ model Organisation {
 
   integrationConfig IntegrationConfig?
   agencyMappings    AgencyMapping[]
+  
+  // API Providers
+  apiProviders      ApiProvider[]
   learners          Learner[]
   sessions          TrainingSession[]
   examSessions      ExamSession[]
@@ -149,6 +152,8 @@ model Organisation {
   
   // Gamification
   challenges         Challenge[]
+  
+  assessmentThemes   AssessmentTheme[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -739,6 +744,9 @@ model Training {
   folders   LearnerFolder[]
   sessions  TrainingSession[]
   calendarEvents CalendarEvent[]
+  
+  // Assessment Context
+  assessmentThemes AssessmentTheme[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -808,7 +816,8 @@ model Lead {
   nurturingTasks NurturingTask[]
   nurturingEnrollments NurturingEnrollment[]
   learner      Learner? // This is the reverse relation from Learner.leadId
-  touchpoints  LeadTouchpoint[]
+  touchpoints  LeadTouchpoint[] // Tracking events
+  assessments  AssessmentSession[] // Positioning tests
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1074,32 +1083,40 @@ model UserAgency {
 }
 
 model ApiProvider {
-  id           String @id @default(cuid())
-  name         String
-  apiKey       String @unique @default(uuid())
-  providerType String @default("LEAD_GENERATOR") // LEAD_GENERATOR, CALL_CENTER, AFFILIATE
-
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  baseUrl        String?
+  apiKey         String?      
+  webhookUrl     String?
+  
   // Compliance & Legal
-  legalName        String?
-  siret            String?
-  complianceStatus String  @default("PENDING") // PENDING, VERIFIED, REJECTED
-
-  // Financial Intelligence
-  pricingModel String @default("CPL") // CPL (Cost Per Lead), FIXED (Monthly)
-  costPerLead  Float  @default(0)
-  currency     String @default("EUR")
-
-  isActive Boolean @default(true)
-
-  // Contact Info (JSON for flexibility)
-  contact String? // JSON String: { name, email, phone, role }
+  siret          String?
+  legalName      String?
+  address        String?
+  contactName    String?
+  contactEmail   String?
+  legalStatus    String?
+  
+  // Onboarding Status
+  status         String       @default("DRAFT") // DRAFT, PENDING_SIGNATURE, ACTIVE, SUSPENDED
+  
+  // Yousign Integration
+  yousignProcedureId String?
+  contractUrl        String?
+  signedAt           DateTime?
+  
+  isActive       Boolean      @default(true)
 
   // Relations
-  leads Lead[]
+  leads          Lead[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
+  @@index([organisationId])
   @@map("api_providers")
 }
 
@@ -1193,13 +1210,14 @@ model IntegrationConfig {
   stripeTestStatus       String?  // 'success' | 'failed' | null
 
   // ═══════════════════════════════════════════════════════════
-  // EMAIL PROVIDER INTEGRATION (SendGrid / Brevo)
+  // EMAIL PROVIDER INTEGRATION (SendGrid / Brevo / SMTP)
   // ═══════════════════════════════════════════════════════════
   emailEnabled           Boolean  @default(false)
-  emailProvider          String?  // 'SENDGRID' | 'BREVO' | 'RESEND'
-  emailApiKey            String?  // Encrypted
+  emailProvider          String?  // 'SENDGRID' | 'BREVO' | 'RESEND' | 'SMTP'
+  emailApiKey            String?  // Encrypted (or Password for SMTP)
   emailFromAddress       String?
   emailFromName          String?
+  emailSmtpConfig        Json?    // { host, port, user, secure } - Password in emailApiKey
   emailLastTestedAt      DateTime?
   emailTestStatus        String?  // 'success' | 'failed' | null
 
@@ -1344,6 +1362,169 @@ model AttendanceLog {
   updatedAt DateTime @updatedAt
 
   @@map("attendance_logs")
+}
+
+// ============================================
+// ASSESSMENT MODULE (Level Testing)
+// ============================================
+
+enum CefrLevel {
+  A1_1
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+model AssessmentConfig {
+  id             String @id @default(uuid())
+  
+  hoursPerLevel    Int    @default(80) // Standard gap hours per level jump
+  targetObjectives Json   // e.g. [{"name": "Nationalité", "target": "B1"}]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("assessment_configs")
+}
+
+model Question {
+  id             String      @id @default(uuid())
+  content        String
+  level          CefrLevel
+  choices        Json        // ["Option A", "Option B", "Option C"]
+  correctIndex   Int
+  
+  // New Fields for Assessment Studio
+  questionType QuestionType @default(MCQ)
+  sectionType  SectionType  @default(GRAMMAR)
+  
+  audioScript  String?   // For Listening
+  audioUrl     String?   // TTS Output (MP3)
+  passageText  String?   // For Reading
+  tags         String?   // Comma-separated tags (SQLite compat)
+
+  isActive       Boolean     @default(true) // Legacy, kept for safety
+  status         ReviewStatus @default(DRAFT)
+
+  // Psychometrics
+  attempts       Int         @default(0)
+  successCount   Int         @default(0)
+  reliabilityScore Float     @default(100.0) // 0-100% confidence
+  flaggedForReview Boolean   @default(false)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("questions")
+}
+
+enum SectionType {
+  GRAMMAR
+  VOCABULARY
+  READING
+  LISTENING
+  WRITING
+  SPEAKING
+}
+
+enum ReviewStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum QuestionType {
+  MCQ
+  BOOLEAN
+  GAP_FILL
+  OPEN_TEXT
+}
+
+model TestTemplate {
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  
+  globalTimeLimit Int?         // Minutes
+  passingScore   Int           @default(500)
+  
+  sections       TestSection[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("test_templates")
+}
+
+model TestSection {
+  id             String       @id @default(cuid())
+  
+  templateId     String
+  template       TestTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  title          String
+  type           SectionType
+  order          Int
+  
+  timeLimit      Int?         // Minutes specific to this section
+  questionsCount Int          // Number of questions to draw
+  targetLevel    CefrLevel
+  topicFilter    String?
+  
+  themes         AssessmentTheme[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("test_sections")
+}
+
+model AssessmentTheme {
+  id             String        @id @default(cuid())
+  organisationId String
+  organisation   Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  name           String
+  description    String?       // Context instructions for AI
+  
+  trainings      Training[]
+  sections       TestSection[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("assessment_themes")
+}
+
+model AssessmentSession {
+  id             String      @id @default(uuid())
+  
+  leadId         String
+  lead           Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  token          String      @unique // Secure public access token
+  status         String      @default("PENDING") // PENDING, COMPLETED
+  
+  targetLevel    CefrLevel
+  resultLevel    CefrLevel?
+  score          Int?        // 0-100 or raw score
+  
+  recommendedHours Int?      // Calculated gap
+  recommendation String?     // Short prescription text
+
+  
+  answers        Json?       // Audit trail of raw answers
+  
+  startedAt      DateTime    @default(now())
+  completedAt    DateTime?
+
+  @@index([token])
+  @@index([leadId])
+  @@map("assessment_sessions")
 }
 
 // ============================================
@@ -2044,8 +2225,39 @@ model DashboardConfig {
   widgets   String // JSON stringified: [{ id, type, title, metric, icon, color, size }]
   
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt  
 
   @@index([userId])
   @@map("dashboard_configs")
+}
+
+// ============================================
+// API PROVIDERS & LEAD SOURCES
+// ============================================
+
+
+
+// ============================================
+// SYSTEM CONFIGURATION (Platform Identity)
+// ============================================
+
+model PlatformConfig {
+  id             String   @id @default("default") // Singleton: always "default"
+  
+  platformName   String   @default("Polyx")
+  description    String?
+  
+  // White-labeling
+  logoUrl        String?
+  faviconUrl     String?
+  footerText     String?  @default("Powered by Polyx")
+  
+  // Legal & Support
+  legalName      String?
+  legalAddress   String?
+  supportEmail   String?
+  
+  updatedAt      DateTime @updatedAt
+  
+  @@map("platform_config")
 }

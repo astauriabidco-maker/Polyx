@@ -2,90 +2,97 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { checkPermissions } from '@/lib/server-utils';
 
-export interface TrainingState {
-    success?: boolean;
-    error?: string;
-    training?: any;
-    trainings?: any[];
+// --- QUERIES ---
+
+export async function getTrainingsCompactAction(orgId: string) {
+    try {
+        const trainings = await prisma.training.findMany({
+            where: { organisationId: orgId, isActive: true },
+            select: { id: true, title: true, category: true },
+            orderBy: { title: 'asc' }
+        });
+        return { success: true, data: trainings };
+    } catch (error) {
+        return { success: false, error: 'Failed' };
+    }
 }
 
-export async function createTrainingAction(data: any, orgId: string): Promise<TrainingState> {
-    try {
-        await checkPermissions('canManageCourses', orgId);
+export async function getTrainingsAction(orgId: string) {
+    return getTrainingsCompactAction(orgId);
+}
 
+// --- MUTATIONS ---
+
+export async function createTrainingAction(orgId: string, data: any) {
+    try {
         const training = await prisma.training.create({
             data: {
                 organisationId: orgId,
                 title: data.title,
-                code: data.code,
-                description: data.description,
+                category: data.category,
+                level: data.level || 'BEGINNER',
                 durationHours: parseInt(data.durationHours) || 0,
                 priceHt: parseFloat(data.priceHt) || 0,
-                level: data.level,
-                category: data.category,
-                examId: data.examId
+                description: data.description,
             }
         });
-
         revalidatePath('/app/academy/catalog');
-        return { success: true, training };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+        return { success: true, data: training };
+    } catch (error) {
+        console.error('Create Training Error:', error);
+        return { success: false, error: 'Failed to create training' };
     }
 }
 
-export async function updateTrainingAction(id: string, data: any, orgId: string): Promise<TrainingState> {
+export async function updateTrainingAction(id: string, orgId: string, data: any) {
     try {
-        await checkPermissions('canManageCourses', orgId);
+        // Verify ownership
+        const existing = await prisma.training.findUnique({
+            where: { id }
+        });
+
+        if (!existing || existing.organisationId !== orgId) {
+            return { success: false, error: 'Unauthorized or not found' };
+        }
 
         const training = await prisma.training.update({
             where: { id },
             data: {
                 title: data.title,
-                code: data.code,
-                description: data.description,
+                category: data.category,
+                level: data.level,
                 durationHours: parseInt(data.durationHours) || 0,
                 priceHt: parseFloat(data.priceHt) || 0,
-                level: data.level,
-                category: data.category,
+                description: data.description,
                 isActive: data.isActive,
-                examId: data.examId
             }
         });
-
         revalidatePath('/app/academy/catalog');
-        return { success: true, training };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+        return { success: true, data: training };
+    } catch (error) {
+        console.error('Update Training Error:', error);
+        return { success: false, error: 'Failed to update training' };
     }
 }
 
-export async function getTrainingsAction(orgId: string): Promise<TrainingState> {
+export async function deleteTrainingAction(id: string, orgId: string) {
     try {
-        // Simple read can contain broader permissions if needed, but keeping it secure
-        const trainings = await prisma.training.findMany({
-            where: { organisationId: orgId },
-            orderBy: { createdAt: 'desc' }
+        const existing = await prisma.training.findUnique({
+            where: { id }
         });
-        return { success: true, trainings };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
 
-export async function deleteTrainingAction(id: string, orgId: string): Promise<TrainingState> {
-    try {
-        await checkPermissions('canManageCourses', orgId);
+        if (!existing || existing.organisationId !== orgId) {
+            return { success: false, error: 'Unauthorized or not found' };
+        }
 
         await prisma.training.delete({
             where: { id }
         });
-
         revalidatePath('/app/academy/catalog');
         return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error) {
+        console.error('Delete Training Error:', error);
+        return { success: false, error: 'Failed to delete training' };
     }
 }

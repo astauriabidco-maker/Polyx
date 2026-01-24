@@ -100,9 +100,6 @@ import {
     testKairosConnectionAction
 } from '@/application/actions/kairos.actions';
 import {
-    getSendGridSettingsAction,
-    saveSendGridConfigAction,
-    testSendGridConnectionAction,
     getTwilioSettingsAction,
     saveTwilioConfigAction,
     testTwilioConnectionAction,
@@ -111,6 +108,10 @@ import {
     testVoiceConnectionAction,
     testDeepgramConnectionAction
 } from '@/application/actions/communication.actions';
+import { ApiProvidersCard } from './_components/ApiProvidersCard';
+// ... (imports)
+
+// ...
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR CARD COMPONENT
@@ -686,12 +687,18 @@ export default function IntegrationsPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                {/* ═══════════════════════════════════════════════════════════════════════════════
+                    API & SOURCES DE LEADS
+                ═══════════════════════════════════════════════════════════════════════════════ */}
+                <ApiProvidersCard orgId={activeOrganization.id} />
+
                 {/* ═══════════════════════════════════════════════════════════════════════════════
                     COMMUNICATION OMNICANALE
                 ═══════════════════════════════════════════════════════════════════════════════ */}
                 <VoiceIntegrationCard orgId={activeOrganization.id} />
                 <VoiceIntelligenceCard orgId={activeOrganization.id} />
-                <SendGridCard orgId={activeOrganization.id} />
+                <EmailConfigCard orgId={activeOrganization.id} />
                 <GoogleCalendarCard orgId={activeOrganization.id} />
 
                 {/* ═══════════════════════════════════════════════════════════════════════════════
@@ -1629,14 +1636,21 @@ function TwilioCard({ orgId }: { orgId?: string }) {
     );
 }
 
-function SendGridCard({ orgId }: { orgId?: string }) {
+function EmailConfigCard({ orgId }: { orgId?: string }) {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
     const [enabled, setEnabled] = useState(false);
+    const [provider, setProvider] = useState<'SENDGRID' | 'BREVO' | 'RESEND' | 'SMTP'>('SENDGRID');
     const [apiKey, setApiKey] = useState('');
     const [fromEmail, setFromEmail] = useState('');
     const [fromName, setFromName] = useState('');
+
+    // SMTP Specifics
+    const [smtpHost, setSmtpHost] = useState('');
+    const [smtpPort, setSmtpPort] = useState('587');
+    const [smtpUser, setSmtpUser] = useState('');
+
     const { toast } = useToast();
 
     useEffect(() => {
@@ -1645,38 +1659,52 @@ function SendGridCard({ orgId }: { orgId?: string }) {
 
     async function loadSettings() {
         setIsLoading(true);
-        const res = await getSendGridSettingsAction(orgId!) as any;
+        const res = await getEmailSettingsAction(orgId!) as any;
         if (res.success && res.data) {
             setEnabled(res.data.emailEnabled);
+            setProvider(res.data.emailProvider as any || 'SENDGRID');
             setApiKey(res.data.emailApiKey ? '••••••••' : '');
             setFromEmail(res.data.emailFromAddress || '');
             setFromName(res.data.emailFromName || '');
+
+            if (res.data.emailSmtpConfig) {
+                setSmtpHost(res.data.emailSmtpConfig.host || '');
+                setSmtpPort(res.data.emailSmtpConfig.port || '587');
+                setSmtpUser(res.data.emailSmtpConfig.user || '');
+            }
         }
         setIsLoading(false);
     }
 
     async function handleSave() {
         setIsSaving(true);
-        const res = await saveSendGridConfigAction(orgId!, {
+        const res = await saveEmailConfigAction(orgId!, {
             enabled,
+            provider,
             apiKey: apiKey.includes('•') ? undefined : apiKey,
-            fromEmail,
-            fromName
+            fromAddress: fromEmail,
+            fromName,
+            smtpConfig: provider === 'SMTP' ? {
+                host: smtpHost,
+                port: smtpPort,
+                user: smtpUser
+            } : undefined
         });
-        if (res.success) toast({ title: "Configuration SendGrid sauvegardée 📧" });
+
+        if (res.success) toast({ title: "Configuration Email sauvegardée 📧" });
         else toast({ title: "Erreur", description: res.error, variant: "destructive" });
         setIsSaving(false);
     }
 
     async function handleTest() {
         setIsTesting(true);
-        const res = await testSendGridConnectionAction(orgId!);
-        if (res.success) toast({ title: "Connexion SendGrid OK ✅" });
-        else toast({ title: "Échec SendGrid", description: res.error, variant: "destructive" });
+        const res = await testEmailConnectionAction(orgId!, fromEmail);
+        if (res.success) toast({ title: "Envoi Email OK ✅" });
+        else toast({ title: "Échec Envoi Email", description: res.error, variant: "destructive" });
         setIsTesting(false);
     }
 
-    if (isLoading) return <Card><CardContent className="p-6">Chargement SendGrid...</CardContent></Card>;
+    if (isLoading) return <Card><CardContent className="p-6">Chargement Email...</CardContent></Card>;
 
     return (
         <Card className="border-slate-200 shadow-md">
@@ -1684,17 +1712,59 @@ function SendGridCard({ orgId }: { orgId?: string }) {
                 <div className="flex items-center gap-3">
                     <Send size={24} />
                     <div>
-                        <CardTitle className="text-lg">SendGrid (Emails)</CardTitle>
-                        <CardDescription className="text-blue-500 text-xs">Emailing transactionnel haute délivrabilité</CardDescription>
+                        <CardTitle className="text-lg">Emails & Notifications</CardTitle>
+                        <CardDescription className="text-blue-100 text-xs">Transactionnel (SMTP, SendGrid, Brevo...)</CardDescription>
                     </div>
                     <Switch checked={enabled} onCheckedChange={setEnabled} className="ml-auto" />
                 </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
                 <div className="space-y-2">
-                    <Label>Clé API SendGrid</Label>
-                    <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                    <Label>Fournisseur</Label>
+                    <Select value={provider} onValueChange={(v: any) => setProvider(v)}>
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="SENDGRID">SendGrid</SelectItem>
+                            <SelectItem value="BREVO">Brevo (Sendinblue)</SelectItem>
+                            <SelectItem value="RESEND">Resend</SelectItem>
+                            <SelectItem value="SMTP">Serveur SMTP Personnalisé</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
+
+                {provider === 'SMTP' ? (
+                    <div className="space-y-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <div className="text-xs font-bold text-slate-500 uppercase">Configuration SMTP</div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Hôte (Host)</Label>
+                                <Input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.office365.com" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Port</Label>
+                                <Input value={smtpPort} onChange={e => setSmtpPort(e.target.value)} placeholder="587" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Utilisateur</Label>
+                                <Input value={smtpUser} onChange={e => setSmtpUser(e.target.value)} placeholder="user@domain.com" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Mot de passe</Label>
+                                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <Label>Clé API {provider}</Label>
+                        <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>Email Expéditeur</Label>
@@ -1705,6 +1775,7 @@ function SendGridCard({ orgId }: { orgId?: string }) {
                         <Input value={fromName} onChange={e => setFromName(e.target.value)} placeholder="Ma Plateforme" />
                     </div>
                 </div>
+
                 <div className="flex items-center gap-3 pt-2">
                     <Button variant="outline" onClick={handleTest} disabled={isTesting || !enabled}>
                         {isTesting && <Loader2 className="mr-2 animate-spin" />} Tester

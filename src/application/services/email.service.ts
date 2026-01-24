@@ -2,8 +2,9 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
 import type { IntegrationConfig } from '@prisma/client';
+import nodemailer from 'nodemailer';
 
-export type EmailProvider = 'SENDGRID' | 'BREVO' | 'RESEND';
+export type EmailProvider = 'SENDGRID' | 'BREVO' | 'RESEND' | 'SMTP';
 
 interface EmailOptions {
     to: string;
@@ -38,7 +39,7 @@ export class EmailService {
         const fromName = config.emailFromName || 'Polyx Notification';
 
         if (!apiKey) {
-            return { success: false, error: "Missing API Key" };
+            return { success: false, error: "Missing API Key/Password" };
         }
 
         try {
@@ -49,6 +50,8 @@ export class EmailService {
                     return await this.sendViaBrevo(apiKey, fromEmail, fromName, options);
                 case 'RESEND':
                     return await this.sendViaResend(apiKey, fromEmail, fromName, options);
+                case 'SMTP':
+                    return await this.sendViaSmtp(apiKey, config.emailSmtpConfig, fromEmail, fromName, options);
                 default:
                     return { success: false, error: "Unsupported provider" };
             }
@@ -56,6 +59,35 @@ export class EmailService {
             console.error(`[EmailService] Error sending via ${provider}:`, error);
             return { success: false, error: error.message || "Unknown error" };
         }
+    }
+
+    /**
+     * SMTP Implementation (Nodemailer)
+     */
+    private static async sendViaSmtp(password: string, smtpConfig: any, fromEmail: string, fromName: string, options: EmailOptions) {
+        if (!smtpConfig || !smtpConfig.host) {
+            throw new Error("SMTP Configuration missing (host, port, user)");
+        }
+
+        const transporter = nodemailer.createTransport({
+            host: smtpConfig.host,
+            port: parseInt(smtpConfig.port || '587'),
+            secure: smtpConfig.secure === true, // true for 465, false for other ports
+            auth: {
+                user: smtpConfig.user,
+                pass: password,
+            },
+        });
+
+        await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: options.to,
+            subject: options.subject,
+            html: options.html,
+            text: options.text || options.html.replace(/<[^>]*>?/gm, '') // Fallback text
+        });
+
+        return { success: true };
     }
 
     /**

@@ -15,7 +15,8 @@ import {
     LayoutGrid,
     List as ListIcon,
     Plus,
-    Target
+    Target,
+    FileUp
 } from 'lucide-react';
 import { Lead, LeadStatus, LeadWithOrg } from '@/domain/entities/lead';
 import { Role } from '@/domain/entities/permission';
@@ -336,6 +337,9 @@ export default function ProspectionDashboard({ initialLeads }: { initialLeads?: 
                         <input type="text" placeholder="Recherche rapide (CMD+K)" className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-md pl-8 pr-4 py-1.5 text-xs text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-900 w-56 transition-all" />
                     </div>
 
+                    <Button size="sm" variant="outline" onClick={() => window.location.href = '/app/leads/import'} className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-300 text-xs h-8 px-3 mr-2">
+                        <FileUp size={14} className="mr-1.5" /> Import
+                    </Button>
                     <Button size="sm" onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 px-3">
                         <Plus size={14} className="mr-1.5" /> Nouveau
                     </Button>

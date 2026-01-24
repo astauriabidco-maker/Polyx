@@ -18,7 +18,7 @@ export async function getEmailSettingsAction(orgId: string) {
 
         // Mask API Key
         const maskedKey = config.emailApiKey
-            ? '••••••••' + config.emailApiKey.slice(-4) // Just a visual dummy, encryption makes this tricky to show real last 4 chars if randomized iv, but good enough for UI state
+            ? '••••••••' + config.emailApiKey.slice(-4)
             : '';
 
         return {
@@ -26,9 +26,10 @@ export async function getEmailSettingsAction(orgId: string) {
             data: {
                 emailEnabled: config.emailEnabled,
                 emailProvider: config.emailProvider,
-                emailApiKey: config.emailApiKey ? '••••••••' : '', // Don't send real key back
+                emailApiKey: config.emailApiKey ? '••••••••' : '',
                 emailFromAddress: config.emailFromAddress,
                 emailFromName: config.emailFromName,
+                emailSmtpConfig: config.emailSmtpConfig, // Return SMTP config
                 lastTestedAt: config.emailLastTestedAt,
                 testStatus: config.emailTestStatus
             }
@@ -49,6 +50,11 @@ export async function saveEmailConfigAction(
         apiKey?: string; // Optional if not changing
         fromAddress: string;
         fromName: string;
+        smtpConfig?: {
+            host: string;
+            port: string;
+            user: string;
+        }
     }
 ) {
     try {
@@ -64,6 +70,8 @@ export async function saveEmailConfigAction(
             finalApiKey = encrypt(data.apiKey);
         }
 
+        const smtpConfigData = data.provider === 'SMTP' ? data.smtpConfig : undefined;
+
         await prisma.integrationConfig.upsert({
             where: { organisationId: orgId },
             update: {
@@ -72,6 +80,7 @@ export async function saveEmailConfigAction(
                 emailApiKey: finalApiKey,
                 emailFromAddress: data.fromAddress,
                 emailFromName: data.fromName,
+                emailSmtpConfig: smtpConfigData as any
             },
             create: {
                 organisationId: orgId,
@@ -80,6 +89,7 @@ export async function saveEmailConfigAction(
                 emailApiKey: finalApiKey,
                 emailFromAddress: data.fromAddress,
                 emailFromName: data.fromName,
+                emailSmtpConfig: smtpConfigData as any
             }
         });
 

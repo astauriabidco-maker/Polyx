@@ -1,4 +1,4 @@
-import { X, Phone, Calendar, MessageSquare, Clock, TrendingUp, PhoneOff, AlertCircle, Send, RefreshCcw, Loader2, Link, Mail } from 'lucide-react';
+import { X, Phone, Calendar, MessageSquare, Clock, TrendingUp, PhoneOff, AlertCircle, Send, RefreshCcw, Loader2, Link, Mail, GraduationCap } from 'lucide-react';
 import { CommunicationModal } from '../communication/communication-modal';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,6 +13,8 @@ import CallLogModal from '@/components/crm/CallLogModal';
 import { updateLeadAction, getSalesRepsAction, refreshLeadScoreAction, logCallAction, logActivityAction } from '@/application/actions/lead.actions';
 import { ScriptService } from '@/application/services/script.service';
 import { getVoiceSettingsAction } from '@/application/actions/communication.actions';
+import { createAssessmentSessionAction } from '@/application/actions/assessment.actions';
+import { CefrLevel } from '@prisma/client';
 
 // New Sub-components
 import { LeadScheduleModal } from './drawer/LeadScheduleModal';
@@ -20,6 +22,7 @@ import { LeadInsights } from './drawer/LeadInsights';
 import { NurturingStatus } from './drawer/NurturingStatus';
 import { CallInsights } from './drawer/CallInsights';
 import { AttributionJourney } from './drawer/AttributionJourney';
+import { AssessmentCard } from '@/components/crm/AssessmentCard';
 
 interface LeadDrawerProps {
     lead: LeadWithOrg | null;
@@ -59,6 +62,8 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
     const [isSharingLink, setIsSharingLink] = useState(false);
+    const [assessmentLink, setAssessmentLink] = useState<string | null>(null);
+    const [isCreatingAssessment, setIsCreatingAssessment] = useState(false);
     const [callLogDefaults, setCallLogDefaults] = useState<{ outcome?: CallOutcome, notes?: string } | null>(null);
 
     useEffect(() => {
@@ -176,6 +181,29 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
             notes: outcome === CallOutcome.CALLBACK_SCHEDULED ? 'Rappel planifié depuis Cockpit' : 'Appel via Cockpit'
         });
         setShowCallLogModal(true);
+    };
+
+    const handleCreateAssessment = async () => {
+        if (!lead || isCreatingAssessment) return;
+        setIsCreatingAssessment(true);
+        try {
+            // Defaulting to B2 for generic assessment if not specified
+            // Ideally this should be selectable or inferred from examId
+            const targetLevel = CefrLevel.B2;
+            const res = await createAssessmentSessionAction(lead.id, targetLevel);
+
+            if (res.success && res.data) {
+                const link = `${window.location.protocol}//${window.location.host}/assessment/${res.data.token}`;
+                setAssessmentLink(link);
+            } else {
+                alert("Erreur lors de la création du test.");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Erreur inattendue.");
+        } finally {
+            setIsCreatingAssessment(false);
+        }
     };
 
     return createPortal(
@@ -474,6 +502,7 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                                             )}
                                         </div>
                                     </div>
+                                    <AssessmentCard lead={lead} onUpdate={(l) => onUpdate(l)} />
                                 </div>
                             )}
 
@@ -505,6 +534,15 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                                 onClick={() => setIsSharingLink(true)}
                             >
                                 <Link size={16} /> Partager Lien
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="flex-1 min-w-[120px] gap-2 border-slate-300 text-purple-700 hover:bg-purple-50"
+                                onClick={handleCreateAssessment}
+                                disabled={isCreatingAssessment}
+                            >
+                                {isCreatingAssessment ? <Loader2 className="animate-spin" size={16} /> : <GraduationCap size={16} />}
+                                Test
                             </Button>
                             <Button
                                 variant="outline"
@@ -585,6 +623,21 @@ export function LeadDrawer({ lead, onClose, onUpdate }: LeadDrawerProps) {
                         title={`Partager lien de réservation`}
                         defaultMessage={`Bonjour ${lead.firstName}, vous pouvez réserver un créneau dans mon calendrier via ce lien : ${window.location.protocol}//${window.location.host}/book/${lead.assignedUserId}`}
                         defaultSubject={`Lien de réservation - ${lead.organizationName || 'Polyx'}`}
+                    />
+                )}
+
+                {/* Assessment Modal (Reusing CommunicationModal) */}
+                {assessmentLink && lead && (
+                    <CommunicationModal
+                        leadIds={[lead.id]}
+                        onClose={() => setAssessmentLink(null)}
+                        onSuccess={() => {
+                            setAssessmentLink(null);
+                            onUpdate(lead);
+                        }}
+                        title="Envoyer Test de Positionnement"
+                        defaultMessage={`Bonjour ${lead.firstName},\n\nAfin de personnaliser votre formation, merci de compléter ce test de positionnement (durée estimée: 10min) :\n${assessmentLink}\n\nCordialement,`}
+                        defaultSubject={`Votre Test de Positionnement - ${lead.organizationName || 'Polyx'}`}
                     />
                 )}
             </div>
