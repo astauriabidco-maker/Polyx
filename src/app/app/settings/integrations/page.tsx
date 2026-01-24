@@ -794,7 +794,7 @@ function AiCard({ orgId }: { orgId?: string }) {
 
     // Config State
     const [enabled, setEnabled] = useState(false);
-    const [provider, setProvider] = useState<'GEMINI' | 'OPENAI'>('GEMINI');
+    const [provider, setProvider] = useState<'GEMINI' | 'OPENAI' | 'CLAUDE' | 'MISTRAL'>('GEMINI');
     const [apiKey, setApiKey] = useState('');
     const [model, setModel] = useState('gemini-1.5-flash');
 
@@ -803,9 +803,11 @@ function AiCard({ orgId }: { orgId?: string }) {
     const [status, setStatus] = useState<any>(null);
     const { toast } = useToast();
 
-    const models = {
+    const models: Record<typeof provider, string[]> = {
         GEMINI: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
-        OPENAI: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo']
+        OPENAI: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+        CLAUDE: ['claude-3-5-sonnet-latest', 'claude-3-haiku-20240307', 'claude-3-opus-20240229'],
+        MISTRAL: ['mistral-small-latest', 'mistral-large-latest', 'open-mistral-7b']
     };
 
     useEffect(() => {
@@ -817,7 +819,7 @@ function AiCard({ orgId }: { orgId?: string }) {
         const res = await getAiSettingsAction(orgId!);
         if (res.success && res.data) {
             setEnabled(res.data.aiEnabled);
-            setProvider((res.data.aiProvider as 'GEMINI' | 'OPENAI') || 'GEMINI');
+            setProvider((res.data.aiProvider as typeof provider) || 'GEMINI');
             setApiKey(res.data.aiApiKey || '');
             setModel(res.data.aiModel || 'gemini-1.5-flash');
             setStatus({
@@ -911,7 +913,7 @@ function AiCard({ orgId }: { orgId?: string }) {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Fournisseur</Label>
-                                <Select value={provider} onValueChange={(v) => { setProvider(v as 'GEMINI' | 'OPENAI'); setModel(models[v as 'GEMINI' | 'OPENAI'][0]); }}>
+                                <Select value={provider} onValueChange={(v) => { setProvider(v as typeof provider); setModel(models[v as typeof provider][0]); }}>
                                     <SelectTrigger className="rounded-lg">
                                         <SelectValue />
                                     </SelectTrigger>
@@ -924,6 +926,16 @@ function AiCard({ orgId }: { orgId?: string }) {
                                         <SelectItem value="OPENAI">
                                             <div className="flex items-center gap-2">
                                                 <Zap size={14} className="text-green-500" /> OpenAI
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="CLAUDE">
+                                            <div className="flex items-center gap-2">
+                                                <Brain size={14} className="text-orange-500" /> Anthropic Claude
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="MISTRAL">
+                                            <div className="flex items-center gap-2">
+                                                <Sparkles size={14} className="text-indigo-500" /> Mistral AI
                                             </div>
                                         </SelectItem>
                                     </SelectContent>
@@ -952,7 +964,11 @@ function AiCard({ orgId }: { orgId?: string }) {
                                     type={showKey ? "text" : "password"}
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
-                                    placeholder={provider === 'GEMINI' ? 'AIza...' : 'sk-...'}
+                                    placeholder={
+                                        provider === 'GEMINI' ? 'AIza...' :
+                                            provider === 'OPENAI' ? 'sk-...' :
+                                                provider === 'CLAUDE' ? 'sk-ant-...' :
+                                                    'mistral-...'}
                                     className="pr-10 font-mono text-xs"
                                 />
                                 <button
@@ -963,9 +979,10 @@ function AiCard({ orgId }: { orgId?: string }) {
                                 </button>
                             </div>
                             <p className="text-[10px] text-slate-500">
-                                {provider === 'GEMINI'
-                                    ? 'Créez une clé sur Google AI Studio (ai.google.dev)'
-                                    : 'Créez une clé sur platform.openai.com'}
+                                {provider === 'GEMINI' && 'Créez une clé sur Google AI Studio (ai.google.dev)'}
+                                {provider === 'OPENAI' && 'Créez une clé sur platform.openai.com'}
+                                {provider === 'CLAUDE' && 'Créez une clé sur console.anthropic.com'}
+                                {provider === 'MISTRAL' && 'Créez une clé sur console.mistral.ai'}
                             </p>
                         </div>
 

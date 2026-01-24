@@ -1,17 +1,25 @@
 /**
  * AI Service for Polyx
- * Supports Gemini and OpenAI providers with configurable models.
+ * Supports Gemini, OpenAI, Claude (Anthropic), and Mistral providers with configurable models.
  */
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
 
-type AIProvider = 'GEMINI' | 'OPENAI';
+type AIProvider = 'GEMINI' | 'OPENAI' | 'CLAUDE' | 'MISTRAL';
 
 interface AIConfig {
     provider: AIProvider;
     apiKey: string;
     model: string;
 }
+
+// Default models per provider
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+    GEMINI: 'gemini-1.5-flash',
+    OPENAI: 'gpt-4o-mini',
+    CLAUDE: 'claude-3-5-sonnet-latest',
+    MISTRAL: 'mistral-small-latest'
+};
 
 export class AIService {
 
@@ -27,10 +35,12 @@ export class AIService {
             return null;
         }
 
+        const provider = (config.aiProvider as AIProvider) || 'GEMINI';
+
         return {
-            provider: (config.aiProvider as AIProvider) || 'GEMINI',
+            provider,
             apiKey: decrypt(config.aiApiKey),
-            model: config.aiModel || (config.aiProvider === 'OPENAI' ? 'gpt-4o-mini' : 'gemini-1.5-flash')
+            model: config.aiModel || DEFAULT_MODELS[provider]
         };
     }
 
@@ -46,12 +56,18 @@ export class AIService {
         }
 
         try {
-            if (config.provider === 'GEMINI') {
-                return await this.callGemini(config.apiKey, config.model, systemPrompt, userPrompt);
-            } else if (config.provider === 'OPENAI') {
-                return await this.callOpenAI(config.apiKey, config.model, systemPrompt, userPrompt);
+            switch (config.provider) {
+                case 'GEMINI':
+                    return await this.callGemini(config.apiKey, config.model, systemPrompt, userPrompt);
+                case 'OPENAI':
+                    return await this.callOpenAI(config.apiKey, config.model, systemPrompt, userPrompt);
+                case 'CLAUDE':
+                    return await this.callClaude(config.apiKey, config.model, systemPrompt, userPrompt);
+                case 'MISTRAL':
+                    return await this.callMistral(config.apiKey, config.model, systemPrompt, userPrompt);
+                default:
+                    return { success: false, error: 'Unknown provider' };
             }
-            return { success: false, error: 'Unknown provider' };
         } catch (error: any) {
             console.error('[AIService] Error:', error);
             return { success: false, error: error.message };
@@ -114,6 +130,72 @@ export class AIService {
         if (!response.ok) {
             const err = await response.json();
             throw new Error(err.error?.message || 'OpenAI API Error');
+        }
+
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content || '';
+        return { success: true, text };
+    }
+
+    /**
+     * Call Claude (Anthropic) API
+     */
+    private static async callClaude(apiKey: string, model: string, systemPrompt: string, userPrompt: string) {
+        const url = 'https://api.anthropic.com/v1/messages';
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model,
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [
+                    { role: 'user', content: userPrompt }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || 'Claude API Error');
+        }
+
+        const data = await response.json();
+        const text = data.content?.[0]?.text || '';
+        return { success: true, text };
+    }
+
+    /**
+     * Call Mistral API
+     */
+    private static async callMistral(apiKey: string, model: string, systemPrompt: string, userPrompt: string) {
+        const url = 'https://api.mistral.ai/v1/chat/completions';
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 2048
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || err.message || 'Mistral API Error');
         }
 
         const data = await response.json();

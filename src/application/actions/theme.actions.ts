@@ -2,15 +2,27 @@
 
 import { prisma } from '@/lib/prisma';
 
-export async function createThemeAction(orgId: string, name: string, description: string, trainingIds: string[] = []) {
+interface ThemeInput {
+    name: string;
+    description?: string;
+    keyVocabulary?: string;
+    situations?: string;
+    styleNotes?: string;
+    trainingIds?: string[];
+}
+
+export async function createThemeAction(orgId: string, input: ThemeInput) {
     try {
         const theme = await prisma.assessmentTheme.create({
             data: {
                 organisationId: orgId,
-                name,
-                description,
-                trainings: trainingIds.length > 0 ? {
-                    connect: trainingIds.map(id => ({ id }))
+                name: input.name,
+                description: input.description || null,
+                keyVocabulary: input.keyVocabulary || null,
+                situations: input.situations || null,
+                styleNotes: input.styleNotes || null,
+                trainings: input.trainingIds && input.trainingIds.length > 0 ? {
+                    connect: input.trainingIds.map(id => ({ id }))
                 } : undefined
             }
         });

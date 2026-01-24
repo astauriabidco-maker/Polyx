@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Sparkles, Plus, Trash2, Clock, BookOpen, Eye, Type, Settings2, CheckCircle2, XCircle, FileCheck, Volume2, Activity, AlertTriangle, Link2, Database, ListChecks, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, Plus, Trash2, Clock, BookOpen, Eye, Type, Settings2, CheckCircle2, XCircle, FileCheck, Volume2, Activity, AlertTriangle, Link2, Database, ListChecks, RefreshCw, FileUp } from 'lucide-react';
 import { generateContentWithAI } from '@/application/actions/ai-factory';
 import { getQuestionsByFilterAction } from '@/application/actions/question-bank.actions';
 import { createThemeAction, getThemesAction } from '@/application/actions/theme.actions';
@@ -19,8 +20,10 @@ import { generateQuestionAudioAction } from '@/application/actions/audio.actions
 import { getTrainingsCompactAction } from '@/application/actions/training.actions';
 import { useAuthStore } from '@/application/store/auth-store';
 import { toast } from 'sonner';
-import { CefrLevel, SectionType } from '@prisma/client';
+import { SectionType, CefrLevel, QuestionType } from '@prisma/client';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { QuestionFormModal } from '@/components/studio/QuestionFormModal';
+import { ImportQuestionsModal } from '@/components/studio/ImportQuestionsModal';
 
 export default function TestBuilderPage() {
     const { user } = useAuthStore();
@@ -38,7 +41,7 @@ export default function TestBuilderPage() {
     // Themes
     const [themes, setThemes] = useState<any[]>([]);
     const [showThemeManager, setShowThemeManager] = useState(false);
-    const [newTheme, setNewTheme] = useState({ name: '', description: '', trainingIds: [] as string[] });
+    const [newTheme, setNewTheme] = useState({ name: '', description: '', keyVocabulary: '', situations: '', styleNotes: '', trainingIds: [] as string[] });
 
     // Review Queue
     const [reviewQueue, setReviewQueue] = useState<any[]>([]);
@@ -48,12 +51,16 @@ export default function TestBuilderPage() {
     // AI Modal
     const [isGenerating, setIsGenerating] = useState(false);
     const [showAIModal, setShowAIModal] = useState(false);
-    const [aiParams, setAiParams] = useState({ type: 'READING' as SectionType, level: 'B2' as CefrLevel, selectedThemeIds: [] as string[] });
+    const [aiParams, setAiParams] = useState({ type: 'READING' as SectionType, questionType: 'MCQ' as QuestionType, level: 'B2' as CefrLevel, selectedThemeIds: [] as string[] });
 
     // Question Bank (All questions, filterable)
     const [allQuestions, setAllQuestions] = useState<any[]>([]);
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
     const [bankFilter, setBankFilter] = useState({ type: '', level: '' });
+
+    // Create/Import Modals
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
 
     useEffect(() => {
         if (user?.organizationId) {
@@ -118,9 +125,16 @@ export default function TestBuilderPage() {
 
     const handleCreateTheme = async () => {
         if (!user?.organizationId || !newTheme.name) return toast.error("Nom requis");
-        await createThemeAction(user.organizationId, newTheme.name, newTheme.description, newTheme.trainingIds);
+        await createThemeAction(user.organizationId, {
+            name: newTheme.name,
+            description: newTheme.description,
+            keyVocabulary: newTheme.keyVocabulary,
+            situations: newTheme.situations,
+            styleNotes: newTheme.styleNotes,
+            trainingIds: newTheme.trainingIds
+        });
         await refreshAll();
-        setNewTheme({ name: '', description: '', trainingIds: [] });
+        setNewTheme({ name: '', description: '', keyVocabulary: '', situations: '', styleNotes: '', trainingIds: [] });
         toast.success("Thématique créée");
     };
 
@@ -132,6 +146,7 @@ export default function TestBuilderPage() {
         try {
             const res = await generateContentWithAI({
                 sectionType: aiParams.type,
+                questionType: aiParams.questionType,
                 level: aiParams.level,
                 themeIds: aiParams.selectedThemeIds,
                 orgId: user.organizationId
@@ -292,12 +307,14 @@ export default function TestBuilderPage() {
                                                         {idx + 1}
                                                     </div>
                                                     <Select value={section.type} onValueChange={(v) => setSections(prev => prev.map(s => s.id === section.id ? { ...s, type: v } : s))}>
-                                                        <SelectTrigger className="h-7 text-xs w-28 border-0 bg-slate-100"><SelectValue /></SelectTrigger>
+                                                        <SelectTrigger className="h-7 text-xs w-36 border-0 bg-slate-100"><SelectValue /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="READING">Reading</SelectItem>
-                                                            <SelectItem value="LISTENING">Listening</SelectItem>
-                                                            <SelectItem value="GRAMMAR">Grammar</SelectItem>
-                                                            <SelectItem value="VOCABULARY">Vocabulary</SelectItem>
+                                                            <SelectItem value="READING">📖 Compréhension écrite</SelectItem>
+                                                            <SelectItem value="LISTENING">🎧 Compréhension orale</SelectItem>
+                                                            <SelectItem value="WRITING">✍️ Expression écrite</SelectItem>
+                                                            <SelectItem value="SPEAKING">🎤 Expression orale</SelectItem>
+                                                            <SelectItem value="GRAMMAR">📝 Grammaire</SelectItem>
+                                                            <SelectItem value="VOCABULARY">📚 Vocabulaire</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
@@ -357,14 +374,22 @@ export default function TestBuilderPage() {
                                     <CardDescription>Questions validées et en production</CardDescription>
                                 </div>
                                 <div className="flex gap-2 items-center">
+                                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowCreateModal(true)}>
+                                        <Plus size={14} className="mr-1" /> Créer
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowImportModal(true)}>
+                                        <FileUp size={14} className="mr-1" /> Importer
+                                    </Button>
                                     <Select value={bankFilter.type} onValueChange={(v) => { setBankFilter(f => ({ ...f, type: v })); loadQuestions(v, bankFilter.level); }}>
-                                        <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+                                        <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="ALL">Tous Types</SelectItem>
-                                            <SelectItem value="READING">Reading</SelectItem>
-                                            <SelectItem value="LISTENING">Listening</SelectItem>
-                                            <SelectItem value="GRAMMAR">Grammar</SelectItem>
-                                            <SelectItem value="VOCABULARY">Vocabulary</SelectItem>
+                                            <SelectItem value="READING">📖 Compréhension écrite</SelectItem>
+                                            <SelectItem value="LISTENING">🎧 Compréhension orale</SelectItem>
+                                            <SelectItem value="WRITING">✍️ Expression écrite</SelectItem>
+                                            <SelectItem value="SPEAKING">🎤 Expression orale</SelectItem>
+                                            <SelectItem value="GRAMMAR">📝 Grammaire</SelectItem>
+                                            <SelectItem value="VOCABULARY">📚 Vocabulaire</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Select value={bankFilter.level} onValueChange={(v) => { setBankFilter(f => ({ ...f, level: v })); loadQuestions(bankFilter.type, v); }}>
@@ -446,6 +471,26 @@ export default function TestBuilderPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
+                        {/* Question Type Selector */}
+                        <div>
+                            <Label className="text-sm font-medium mb-2 block">Type de Question</Label>
+                            <Select value={aiParams.questionType} onValueChange={(v) => setAiParams(p => ({ ...p, questionType: v as QuestionType }))}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="MCQ">☑️ QCM (Choix multiples)</SelectItem>
+                                    <SelectItem value="BOOLEAN">✓✗ Vrai/Faux</SelectItem>
+                                    <SelectItem value="GAP_FILL">📝 Texte à trous</SelectItem>
+                                    <SelectItem value="SHORT_ANSWER">✏️ Réponse courte</SelectItem>
+                                    <SelectItem value="MATCHING">🔗 Appariement</SelectItem>
+                                    <SelectItem value="ORDERING">🔢 Réordonnancement</SelectItem>
+                                    <SelectItem value="OPEN_TEXT">📄 Texte libre</SelectItem>
+                                    <SelectItem value="AUDIO_DICTATION">🎧 Dictée audio</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {/* Themes */}
                         <div>
                             <Label className="text-sm font-medium mb-2 block">Thématiques</Label>
                             <div className="max-h-40 overflow-y-auto space-y-2 border p-2 rounded bg-slate-50">
@@ -557,16 +602,46 @@ export default function TestBuilderPage() {
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-2">
-                            <Input placeholder="Nom" value={newTheme.name} onChange={e => setNewTheme({ ...newTheme, name: e.target.value })} className="h-8 text-sm" />
-                            <Input placeholder="Description IA" value={newTheme.description} onChange={e => setNewTheme({ ...newTheme, description: e.target.value })} className="h-8 text-sm" />
+                            <Input placeholder="Nom du thème *" value={newTheme.name} onChange={e => setNewTheme({ ...newTheme, name: e.target.value })} className="h-8 text-sm" />
+                            <Input placeholder="Brève description" value={newTheme.description} onChange={e => setNewTheme({ ...newTheme, description: e.target.value })} className="h-8 text-sm" />
                         </div>
+
+                        {/* Enriched Context Fields */}
+                        <div className="space-y-2 border-t pt-3">
+                            <Label className="text-xs text-slate-500 flex items-center gap-1">🔤 Vocabulaire clé (pour l'IA)</Label>
+                            <Textarea
+                                placeholder="aéroport, réservation, hébergement, billet, passeport..."
+                                value={newTheme.keyVocabulary}
+                                onChange={e => setNewTheme({ ...newTheme, keyVocabulary: e.target.value })}
+                                className="text-sm min-h-[60px]"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs text-slate-500 flex items-center gap-1">💬 Situations types</Label>
+                            <Textarea
+                                placeholder="Réserver un hôtel, Demander des renseignements à l'office du tourisme, Se plaindre d'un service..."
+                                value={newTheme.situations}
+                                onChange={e => setNewTheme({ ...newTheme, situations: e.target.value })}
+                                className="text-sm min-h-[60px]"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs text-slate-500 flex items-center gap-1">📝 Consignes de style</Label>
+                            <Input
+                                placeholder="Registre formel, contexte professionnel, tutoiement accepté..."
+                                value={newTheme.styleNotes}
+                                onChange={e => setNewTheme({ ...newTheme, styleNotes: e.target.value })}
+                                className="h-8 text-sm"
+                            />
+                        </div>
+
                         <div>
                             <Label className="text-xs text-slate-500">Lier aux Formations</Label>
                             <div className="flex flex-wrap gap-2 mt-1">
                                 {trainings.map(t => (
                                     <Badge
                                         key={t.id}
-                                        variant={newTheme.trainingIds.includes(t.id) ? "default" : "outline"}
+                                        variant={newTheme.trainingIds.includes(t.id) ? "secondary" : "outline"}
                                         className="cursor-pointer text-xs"
                                         onClick={() => {
                                             if (newTheme.trainingIds.includes(t.id)) {
@@ -595,6 +670,22 @@ export default function TestBuilderPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Create Question Modal */}
+            <QuestionFormModal
+                open={showCreateModal}
+                onOpenChange={setShowCreateModal}
+                orgId={user?.organizationId || ''}
+                onSuccess={() => loadQuestions(bankFilter.type, bankFilter.level)}
+            />
+
+            {/* Import Questions Modal */}
+            <ImportQuestionsModal
+                open={showImportModal}
+                onOpenChange={setShowImportModal}
+                orgId={user?.organizationId || ''}
+                onSuccess={() => loadQuestions(bankFilter.type, bankFilter.level)}
+            />
         </div>
     );
 }

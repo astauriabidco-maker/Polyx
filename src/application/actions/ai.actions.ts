@@ -39,7 +39,7 @@ export async function saveAiConfigAction(
     orgId: string,
     data: {
         enabled: boolean;
-        provider: 'GEMINI' | 'OPENAI';
+        provider: 'GEMINI' | 'OPENAI' | 'CLAUDE' | 'MISTRAL';
         apiKey?: string;
         model?: string;
     }

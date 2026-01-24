@@ -1406,6 +1406,14 @@ model Question {
   passageText  String?   // For Reading
   tags         String?   // Comma-separated tags (SQLite compat)
 
+  // Expression Sections (WRITING/SPEAKING) - Sub-sections A/B
+  subSection    String?   // "A" | "B" for expression sections
+  promptText    String?   // Consigne du sujet (topic prompt)
+  minWords      Int?      // Nombre de mots minimum (WRITING only)
+  duration      Int?      // Durée en minutes (SPEAKING only)
+  objectives    Json?     // Objectifs pédagogiques ["...", "..."]
+  exampleAnswer String?   // Réponse type pour calibration
+
   isActive       Boolean     @default(true) // Legacy, kept for safety
   status         ReviewStatus @default(DRAFT)
 
@@ -1438,10 +1446,14 @@ enum ReviewStatus {
 }
 
 enum QuestionType {
-  MCQ
-  BOOLEAN
-  GAP_FILL
-  OPEN_TEXT
+  MCQ              // Choix multiples
+  BOOLEAN          // Vrai/Faux
+  GAP_FILL         // Texte à trous
+  OPEN_TEXT        // Texte libre (expression)
+  MATCHING         // Appariement (relier colonnes)
+  ORDERING         // Réordonnancement (phrases, mots)
+  SHORT_ANSWER     // Réponse courte (un mot, conjugaison)
+  AUDIO_DICTATION  // Dictée audio
 }
 
 model TestTemplate {
@@ -1489,7 +1501,12 @@ model AssessmentTheme {
   organisation   Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   name           String
-  description    String?       // Context instructions for AI
+  description    String?       // Brève description du thème
+  
+  // Contexte enrichi pour l'IA
+  keyVocabulary  String?       // Vocabulaire clé à utiliser (ex: "aéroport, réservation, hébergement")
+  situations     String?       // Situations types (ex: "réserver un hôtel, demander des renseignements")
+  styleNotes     String?       // Consignes de style (ex: "registre formel, contexte professionnel")
   
   trainings      Training[]
   sections       TestSection[]
