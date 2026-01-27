@@ -1,6 +1,7 @@
 export enum LeadStatus {
     PROSPECT = 'PROSPECT', // Newly injected
     PROSPECTION = 'PROSPECTION', // In the loop (calling)
+    A_RAPPELER = 'A_RAPPELER', // To call back
     ATTEMPTED = 'ATTEMPTED', // Tried to call but failed (No Answer)
     CONTACTED = 'CONTACTED', // Spoken to, decision pending
     RDV_FIXE = 'RDV_FIXE', // RDV set -> Move to CRM

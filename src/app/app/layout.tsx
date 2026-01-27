@@ -131,9 +131,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                                             if (sub.id === 'ROLES_MANAGE') subHref = '/app/admin/roles';
                                                             if (sub.id === 'USERS_MANAGE') subHref = '/app/admin/teams';
                                                             if (sub.id === 'STRUCTURE_MANAGE') subHref = '/app/admin/structure';
+                                                            if (sub.id === 'LEADS_PIPELINE') subHref = '/app/leads/pipeline';
                                                             if (sub.id === 'LEADS_ORCHESTRATION') subHref = '/app/leads/orchestration';
                                                             if (sub.id === 'LEADS_SEGMENTS') subHref = '/app/leads/segments';
-                                                            if (sub.id === 'LEADS_IMPORT') subHref = '/app/leads/import';
                                                         }
 
                                                         const isSubActive = pathname === subHref;

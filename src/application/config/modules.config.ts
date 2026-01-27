@@ -36,9 +36,9 @@ export const APP_MODULES: ModuleCategory[] = [
             { id: 'AGENDA_VIEW', name: 'Agenda Intelligent', href: '/app/agenda', icon: Calendar },
             {
                 id: 'LEADS_VIEW', name: 'Leads & Marketing', href: '/app/leads', icon: Users, subItems: [
+                    { id: 'LEADS_PIPELINE', name: 'Pipeline' },
                     { id: 'LEADS_ORCHESTRATION', name: 'Orchestration Campagnes' },
-                    { id: 'LEADS_SEGMENTS', name: 'Audiences & Segments' },
-                    { id: 'LEADS_IMPORT', name: 'Import & Qualification' }
+                    { id: 'LEADS_SEGMENTS', name: 'Audiences & Segments' }
                 ]
             },
             { id: 'CRM_VIEW', name: 'CRM & Closing', href: '/app/crm', icon: Briefcase },

@@ -27,8 +27,8 @@ export async function getLeadsAction(organizationIdOrIds: string | string[], isU
             orderBy: { createdAt: 'desc' },
             include: {
                 organisation: true,
-                assessmentSessions: {
-                    orderBy: { createdAt: 'desc' }
+                assessments: {
+                    orderBy: { startedAt: 'desc' }
                 }
             }
         });
@@ -55,7 +55,7 @@ export async function getLeadsAction(organizationIdOrIds: string | string[], isU
             history: [], // Would fetch Activities in real app
             metadata: lead.metadata || {},
             organizationName: lead.organisation?.name || 'Inconnu',
-            assessmentSessions: lead.assessmentSessions || [],
+            assessmentSessions: lead.assessments || [],
             createdAt: lead.createdAt || new Date(),
             updatedAt: lead.updatedAt || new Date()
         }));

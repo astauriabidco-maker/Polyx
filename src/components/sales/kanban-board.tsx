@@ -1,9 +1,24 @@
 'use client';
 
-import { Lead, LeadWithOrg } from '@/domain/entities/lead';
+import { Lead, LeadWithOrg, LeadStatus } from '@/domain/entities/lead';
 import { LeadService } from '@/application/services/lead.service';
 import { LeadCard } from './lead-card';
 import { GroupingService, DataGroup } from '@/application/services/grouping.service';
+
+// Helper function to check if a lead has an appointment today
+function isTodayAppointment(lead: Lead): boolean {
+    if (lead.status !== LeadStatus.RDV_FIXE && lead.status !== 'RDV_FIXE') return false;
+    if (!lead.nextCallbackAt) return false;
+
+    const today = new Date();
+    const appointmentDate = new Date(lead.nextCallbackAt);
+
+    return (
+        appointmentDate.getDate() === today.getDate() &&
+        appointmentDate.getMonth() === today.getMonth() &&
+        appointmentDate.getFullYear() === today.getFullYear()
+    );
+}
 
 interface KanbanBoardProps {
     leads: LeadWithOrg[];
@@ -32,10 +47,10 @@ export function KanbanBoard({ leads, allLeads = [], onLeadClick, isUnifiedView, 
         ];
     } else if (groupBy === 'pipeline') {
         const pipelineStages = [
-            { id: 'NOUVEAU', title: 'Nouveau Lead', filter: (l: Lead) => l.salesStage === 'NOUVEAU' || l.score > 80 },
-            { id: 'EN_COURS', title: 'En cours', filter: (l: Lead) => (l.status === 'PROSPECTION' || l.status === 'CONTACTED') && l.salesStage !== 'NOUVEAU' },
-            { id: 'RELANCES', title: 'Relances / NRP', filter: (l: Lead) => l.status === 'ATTEMPTED' || l.status === 'NRP' },
-            { id: 'RDV_FIXE', title: 'RDV Validé', filter: (l: Lead) => l.status === 'RDV_FIXE' || l.salesStage === 'RDV_FIXE' }
+            { id: 'NOUVEAU', title: 'Nouveau Lead', filter: (l: Lead) => l.status === LeadStatus.PROSPECT || l.status === 'PROSPECT' },
+            { id: 'A_RAPPELER', title: 'A rappeler', filter: (l: Lead) => l.status === LeadStatus.A_RAPPELER || l.status === 'A_RAPPELER' || l.status === LeadStatus.PROSPECTION || l.status === 'PROSPECTION' || l.status === LeadStatus.CONTACTED || l.status === 'CONTACTED' },
+            { id: 'RELANCE_NRP', title: 'Relance NRP', filter: (l: Lead) => l.status === LeadStatus.NRP || l.status === 'NRP' || l.status === LeadStatus.ATTEMPTED || l.status === 'ATTEMPTED' },
+            { id: 'RDV_FIXE', title: 'RDV Fixé (Aujourd\'hui)', filter: (l: Lead) => isTodayAppointment(l) }
         ];
 
         columns = pipelineStages.map(stage => ({
